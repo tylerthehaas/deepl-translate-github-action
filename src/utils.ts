@@ -54,7 +54,6 @@ function collectAllStringsFromJson(json: Record<string, any>, prefix: string = '
   const keys: string[] = []
   const values: string[] = []
 
-  // Use a stack to process objects iteratively with depth-first order
   interface StackItem {
     obj: Record<string, any>
     currentPrefix: string
@@ -72,11 +71,10 @@ function collectAllStringsFromJson(json: Record<string, any>, prefix: string = '
   ]
 
   while (stack.length > 0) {
-    const current = stack[stack.length - 1] // Peek at top of stack
+    const current = stack[stack.length - 1]
     const { obj, currentPrefix, keysToProcess = [], currentKeyIndex = 0 } = current
 
     if (currentKeyIndex >= keysToProcess.length) {
-      // Done processing this level, pop it off
       stack.pop()
       continue
     }
@@ -87,7 +85,6 @@ function collectAllStringsFromJson(json: Record<string, any>, prefix: string = '
     if (!obj.hasOwnProperty(key)) continue
 
     const value = obj[key]
-    // Escape any literal dots in the key name
     const escapedKey = key.replace(/\./g, '\\.')
     const newKey = currentPrefix ? `${currentPrefix}.${escapedKey}` : escapedKey
 
@@ -95,7 +92,6 @@ function collectAllStringsFromJson(json: Record<string, any>, prefix: string = '
       keys.push(newKey)
       values.push(value)
     } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      // Push child object to stack for depth-first processing
       stack.push({
         obj: value,
         currentPrefix: newKey,
