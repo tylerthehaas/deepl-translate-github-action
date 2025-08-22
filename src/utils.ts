@@ -35,96 +35,158 @@ type TranslatedJSONResults = Record<
 	PossibleRecursive<Record<string, string>>
 >;
 
+interface CollectedStrings {
+  keys: string[]
+  values: string[]
+}
+
+/**
+ * Collects all string values from a JSON object along with their dot-notation keys
+ * Literal dots in key names are escaped with backslashes to distinguish from nested notation
+ * @param json - The JSON object to extract strings from
+ * @param prefix - Internal parameter for building dot notation (don't pass this)
+ * @returns Object with keys and values arrays where indexes correspond
+ * @example
+ * // Input: { "user.name": "John", user: { age: "30" } }
+ * // Output: { keys: ["user\\.name", "user.age"], values: ["John", "30"] }
+ */
+function collectAllStringsFromJson(json: Record<string, any>, prefix: string = ''): CollectedStrings {
+  const keys: string[] = []
+  const values: string[] = []
+
+  // Use a stack to process objects iteratively with depth-first order
+  interface StackItem {
+    obj: Record<string, any>
+    currentPrefix: string
+    keysToProcess?: string[]
+    currentKeyIndex?: number
+  }
+
+  const stack: StackItem[] = [
+    {
+      obj: json,
+      currentPrefix: prefix,
+      keysToProcess: Object.keys(json),
+      currentKeyIndex: 0,
+    },
+  ]
+
+  while (stack.length > 0) {
+    const current = stack[stack.length - 1] // Peek at top of stack
+    const { obj, currentPrefix, keysToProcess = [], currentKeyIndex = 0 } = current
+
+    if (currentKeyIndex >= keysToProcess.length) {
+      // Done processing this level, pop it off
+      stack.pop()
+      continue
+    }
+
+    const key = keysToProcess[currentKeyIndex]
+    current.currentKeyIndex = currentKeyIndex + 1
+
+    if (!obj.hasOwnProperty(key)) continue
+
+    const value = obj[key]
+    // Escape any literal dots in the key name
+    const escapedKey = key.replace(/\./g, '\\.')
+    const newKey = currentPrefix ? `${currentPrefix}.${escapedKey}` : escapedKey
+
+    if (typeof value === 'string') {
+      keys.push(newKey)
+      values.push(value)
+    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      // Push child object to stack for depth-first processing
+      stack.push({
+        obj: value,
+        currentPrefix: newKey,
+        keysToProcess: Object.keys(value),
+        currentKeyIndex: 0,
+      })
+    }
+  }
+
+  return { keys, values }
+}
+
 export const applyRecursive = async (
-	inputJson: Record<string, any>,
-	path: string[] = [],
-	operation: Function,
-	operationArgs: any[],
+  inputJson: Record<string, any>,
+  path: string[] = [],
+  operation: Function,
+  operationArgs: any[],
 ) => {
-	const keys = Object.keys(inputJson);
+  const keys = Object.keys(inputJson)
 
-	for (const key of keys) {
-		const newPath = [...path, key];
+  for (const key of keys) {
+    const newPath = [...path, key]
 
-		if (typeof inputJson[key] === "object") {
-			await applyRecursive(inputJson[key], newPath, operation, operationArgs);
-		} else {
-			await operation(inputJson[key], newPath, ...operationArgs);
-		}
-	}
-};
+    if (typeof inputJson[key] === 'object') {
+      await applyRecursive(inputJson[key], newPath, operation, operationArgs)
+    } else {
+      await operation(inputJson[key], newPath, ...operationArgs)
+    }
+  }
+}
 
 const translateRecursive = async (
-	inputJson: Record<string, any>,
-	targetLanguages: TargetLanguageCode[],
-	translator: Translator,
-	translatedResults: TranslatedJSONResults,
+  inputJson: Record<string, any>,
+  targetLanguages: TargetLanguageCode[],
+  translator: Translator,
+  translatedResults: TranslatedJSONResults,
 ) => {
-	const translate = async (
-		value: string,
-		path: string[],
-		targetLanguages: TargetLanguageCode[],
-		translator: Translator,
-		translatedResults: TranslatedJSONResults,
-	) => {
-		const textToBeTranslated =
-			replaceParameterStringsInJSONValueWithKeepTags(value);
+  const translate = async (
+    value: string,
+    path: string[],
+    targetLanguages: TargetLanguageCode[],
+    translator: Translator,
+    translatedResults: TranslatedJSONResults,
+  ) => {
+    const textToBeTranslated = replaceParameterStringsInJSONValueWithKeepTags(value)
 
-		for (const targetLanguage of targetLanguages) {
-			const textResult = (await translator.translateText(
-				textToBeTranslated,
-				null,
-				targetLanguage,
-				{
-					preserveFormatting: true,
-					tagHandling: "xml",
-					ignoreTags: ["keep"],
-				},
-			)) as TextResult;
+    for (const targetLanguage of targetLanguages) {
+      const textResult = (await translator.translateText(textToBeTranslated, null, targetLanguage, {
+        preserveFormatting: true,
+        tagHandling: 'xml',
+        ignoreTags: ['keep'],
+      })) as TextResult
 
-			if (!translatedResults[targetLanguage]) {
-				translatedResults[targetLanguage] = {};
-			}
+      if (!translatedResults[targetLanguage]) {
+        translatedResults[targetLanguage] = {}
+      }
 
-			const translatedText = textResult.text;
-			const resultText = removeKeepTagsFromString(translatedText);
+      const translatedText = textResult.text
+      const resultText = removeKeepTagsFromString(translatedText)
 
-			// Assign the translated text to its original position in object
-			let currentKey: Record<string, any> = translatedResults[targetLanguage];
-			for (let i = 0; i < path.length; i++) {
-				if (i === path.length - 1) {
-					currentKey[path[i]] = resultText;
-				} else {
-					if (!currentKey[path[i]]) {
-						currentKey[path[i]] = {};
-					}
-					currentKey = currentKey[path[i]];
-				}
-			}
-		}
-	};
+      // Assign the translated text to its original position in object
+      let currentKey: Record<string, any> = translatedResults[targetLanguage]
+      for (let i = 0; i < path.length; i++) {
+        if (i === path.length - 1) {
+          currentKey[path[i]] = resultText
+        } else {
+          if (!currentKey[path[i]]) {
+            currentKey[path[i]] = {}
+          }
+          currentKey = currentKey[path[i]]
+        }
+      }
+    }
+  }
 
-	await applyRecursive(inputJson, [], translate, [
-		targetLanguages,
-		translator,
-		translatedResults,
-	]);
+  await applyRecursive(inputJson, [], translate, [targetLanguages, translator, translatedResults])
 
-	return translatedResults;
-};
+  return translatedResults
+}
 
-function buildOutputFileName(
-	targetLang: string,
-	outputFileNamePattern: string,
-) {
-	return `${outputFileNamePattern.replace("{language}", targetLang)}`
+function buildOutputFileName(targetLang: string, outputFileNamePattern: string) {
+  return outputFileNamePattern.replace(/\{language\}/g, targetLang)
 }
 
 export {
-	replaceAll,
-	removeKeepTagsFromString,
-	replaceParameterStringsInJSONValueWithKeepTags,
-	translateRecursive,
-	buildOutputFileName,
-	TranslatedJSONResults,
-};
+  replaceAll,
+  removeKeepTagsFromString,
+  replaceParameterStringsInJSONValueWithKeepTags,
+  translateRecursive,
+  buildOutputFileName,
+  TranslatedJSONResults,
+  collectAllStringsFromJson,
+  CollectedStrings,
+}

@@ -1,138 +1,127 @@
-import type { SpyInstance } from "vitest";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { MainFunctionParams } from "../src/main";
-import { main } from "../src/main";
-import fs from "fs";
+import { afterEach, beforeEach, describe, expect, test, vi, type MockInstance } from 'vitest'
+import type { MainFunctionParams } from '../src/main'
+import { main } from '../src/main'
+import fs from 'fs'
 
-vi.mock("deepl-node", () => ({
-	TargetLanguageCode: "",
-}));
+vi.mock('deepl-node', () => ({
+  TargetLanguageCode: '',
+}))
 
-describe("main - HTMLlike files", () => {
-	const mockTranslator = {
-		translateText: vi.fn().mockResolvedValue(() =>
-			Promise.resolve({
-				text: "translated text",
-			}),
-		),
-	} as any;
+// Mock fs module at the top level
+vi.mock('fs', () => ({
+  default: {
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    promises: {
+      readFile: vi.fn(),
+      writeFile: vi.fn(),
+      mkdir: vi.fn(),
+    },
+  },
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  promises: {
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+  },
+}))
 
-	vi.mock("deepl-node");
-	vi.mock("fs");
+describe('main - HTMLlike files', () => {
+  const mockTranslator = {
+    translateText: vi.fn().mockResolvedValue({
+      text: 'translated text',
+    }),
+  } as any
 
-	let mockTranslatorSpy: SpyInstance;
-	let existsSpy: SpyInstance;
-	let readFileSyncSpy: SpyInstance;
-	let writeFileSyncSpy: SpyInstance;
-	let writeFileSpy: SpyInstance;
-	let readFileSpy: SpyInstance;
+  let mockTranslatorSpy: MockInstance
 
-	const fakeInputFileFolderPath = "test";
-	const fakeInputFilename = "inputFilePath.md";
-	const fakeOutputFileNamePattern = `${fakeInputFileFolderPath}/`;
-	const fakeTempFilePath = "to_translate.txt";
-	const fakeReadFileResult = Buffer.from("Your mocked data here");
+  const fakeInputFileFolderPath = 'test'
+  const fakeInputFilename = 'inputFilePath.md'
+  const fakeOutputFileNamePattern = `${fakeInputFileFolderPath}/{language}.md`
+  const fakeTempFilePath = 'to_translate.txt'
+  const fakeReadFileResult = 'Your mocked data here'
 
-	beforeEach(() => {
-		mockTranslatorSpy = vi.spyOn(mockTranslator, "translateText");
-		existsSpy = vi.mocked(fs.existsSync).mockReturnValue(true);
-		readFileSyncSpy = vi
-			.mocked(fs.readFileSync)
-			.mockReturnValue("readFile sync result");
-		writeFileSyncSpy = vi.mocked(fs.writeFileSync).mockReturnValue();
-		writeFileSpy = vi
-			.mocked(fs.writeFile)
-			.mockImplementation((path, data, callback) => {
-				callback(null);
-			});
-		readFileSpy = vi.mocked(fs.readFile).mockImplementation(((
-			_path: any,
-			_encoding,
-			callback: (err: any, data: Buffer) => void,
-		) => {
-			callback(null, fakeReadFileResult); // Pass the mocked data
-		}) as any);
-	});
-	afterEach(() => {
-		vi.clearAllMocks();
-	});
-	test("should run without errors", async () => {
-		const testParams: MainFunctionParams = {
-			translator: mockTranslator,
-			inputFilePath: `${fakeInputFileFolderPath}/${fakeInputFilename}`,
-			outputFileNamePattern: fakeOutputFileNamePattern,
-			tempFilePath: fakeTempFilePath,
-			fileExtensionsThatAllowForIgnoringBlocks: [".html", ".xml", ".md"],
-			targetLanguages: ["de"],
-		};
-		await expect(main(testParams)).resolves.not.toThrow();
-		expect(mockTranslatorSpy).toHaveBeenCalled();
-	});
-});
+  beforeEach(() => {
+    mockTranslatorSpy = vi.spyOn(mockTranslator, 'translateText')
 
-describe("main - JSON files", () => {
-	const mockTranslator = {
-		translateText: vi.fn().mockResolvedValue(() =>
-			Promise.resolve({
-				text: "{'someKey': 'translated text'}",
-			}),
-		),
-	} as any;
+    // Mock fs methods
+    vi.mocked(fs.existsSync).mockReturnValue(true)
+    vi.mocked(fs.readFileSync).mockReturnValue('readFile sync result')
+    vi.mocked(fs.writeFileSync).mockReturnValue()
 
-	vi.mock("deepl-node");
-	vi.mock("fs");
+    // Mock fs.promises methods
+    vi.mocked(fs.promises.readFile).mockResolvedValue(fakeReadFileResult)
+    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined)
+    vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined as any)
+  })
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+  test('should run without errors', async () => {
+    const testParams: MainFunctionParams = {
+      translator: mockTranslator,
+      inputFilePath: `${fakeInputFileFolderPath}/${fakeInputFilename}`,
+      outputFileNamePattern: fakeOutputFileNamePattern,
+      tempFilePath: fakeTempFilePath,
+      fileExtensionsThatAllowForIgnoringBlocks: ['.html', '.xml', '.md'],
+      targetLanguages: ['de'],
+    }
+    await expect(main(testParams)).resolves.not.toThrow()
+    expect(mockTranslatorSpy).toHaveBeenCalled()
+  })
+})
 
-	let mockTranslatorSpy: SpyInstance;
-	let existsSpy: SpyInstance;
-	let readFileSyncSpy: SpyInstance;
-	let writeFileSyncSpy: SpyInstance;
-	let writeFileSpy: SpyInstance;
-	let readFileSpy: SpyInstance;
+describe('main - JSON files', () => {
+  const mockTranslator = {
+    translateText: vi.fn().mockResolvedValue({
+      text: 'translated text',
+    }),
+  } as any
 
-	const fakeInputFileFolderPath = "test";
-	const fakeInputFilename = "inputFilePath.json";
-	const fakeOutputFileNamePattern = `${fakeInputFileFolderPath}/{language}.json`;
-	const fakeTempFilePath = "to_translate.txt";
-	const testJSON = {
-		welcome: "Welcome, {name}!",
-		language: "Language",
-		description: "This is a wonderful world isn't it?",
-	};
-	const testJSONstring = JSON.stringify(testJSON);
+  let mockTranslatorSpy: MockInstance
 
-	const fakeReadFileResult = Buffer.from(testJSONstring);
+  const fakeInputFileFolderPath = 'test'
+  const fakeInputFilename = 'inputFilePath.json'
+  const fakeOutputFileNamePattern = `${fakeInputFileFolderPath}/{language}.json`
+  const fakeTempFilePath = 'to_translate.txt'
+  const testJSON = {
+    welcome: 'Welcome, {name}!',
+    language: 'Language',
+    description: "This is a wonderful world isn't it?",
+  }
+  const testJSONstring = JSON.stringify(testJSON)
 
-	beforeEach(() => {
-		mockTranslatorSpy = vi.spyOn(mockTranslator, "translateText");
-		existsSpy = vi.mocked(fs.existsSync).mockReturnValue(true);
-		readFileSyncSpy = vi.mocked(fs.readFileSync).mockReturnValue(testJSONstring);
-		writeFileSyncSpy = vi.mocked(fs.writeFileSync).mockReturnValue();
-		writeFileSpy = vi
-			.mocked(fs.writeFile)
-			.mockImplementation((path, data, callback) => {
-				callback(null);
-			});
-		readFileSpy = vi.mocked(fs.readFile).mockImplementation(((
-			_path: any,
-			_encoding,
-			callback: (err: any, data: Buffer) => void,
-		) => {
-			callback(null, fakeReadFileResult); // Pass the mocked data
-		}) as any);
-	});
-	afterEach(() => {
-		vi.clearAllMocks();
-	});
-	test("should run without errors", async () => {
-		const testParams: MainFunctionParams = {
-			translator: mockTranslator,
-			inputFilePath: `${fakeInputFileFolderPath}/${fakeInputFilename}`,
-			outputFileNamePattern: fakeOutputFileNamePattern,
-			tempFilePath: fakeTempFilePath,
-			fileExtensionsThatAllowForIgnoringBlocks: [".html", ".xml", ".md"],
-			targetLanguages: ["de"],
-		};
-		await expect(main(testParams)).resolves.not.toThrow();
-		expect(mockTranslatorSpy).toHaveBeenCalled();
-	});
-});
+  beforeEach(() => {
+    mockTranslatorSpy = vi.spyOn(mockTranslator, 'translateText')
+
+    // Mock fs methods
+    vi.mocked(fs.existsSync).mockReturnValue(true)
+    vi.mocked(fs.readFileSync).mockReturnValue(testJSONstring)
+    vi.mocked(fs.writeFileSync).mockReturnValue()
+
+    // Mock fs.promises methods with valid JSON
+    vi.mocked(fs.promises.readFile).mockResolvedValue(testJSONstring)
+    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined)
+    vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined as any)
+  })
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+  test('should run without errors', async () => {
+    const testParams: MainFunctionParams = {
+      translator: mockTranslator,
+      inputFilePath: `${fakeInputFileFolderPath}/${fakeInputFilename}`,
+      outputFileNamePattern: fakeOutputFileNamePattern,
+      tempFilePath: fakeTempFilePath,
+      fileExtensionsThatAllowForIgnoringBlocks: ['.html', '.xml', '.md'],
+      targetLanguages: ['de'],
+    }
+    await expect(main(testParams)).resolves.not.toThrow()
+    expect(mockTranslatorSpy).toHaveBeenCalled()
+  })
+})

@@ -60,75 +60,84 @@ export async function main(params: MainFunctionParams) {
 		console.debug("tempFileExists: ", tempFileExists);
 		const translateFilePath = tempFileExists ? tempFilePath : inputFilePath;
 
-		fs.readFile(translateFilePath, "utf8", async function (err, text) {
-			if (err) {
-				return console.info(err);
-			}
+		try {
+      const text = await fs.promises.readFile(translateFilePath, 'utf8')
 
-			console.info(
-				`Translating the input file into ${targetLanguages.length} languages...`,
-			);
+      console.info(`Translating the input file into ${targetLanguages.length} languages...`)
 
-			for (const targetLanguage of targetLanguages) {
-				const targetLang = targetLanguage as TargetLanguageCode;
-				const textResult = await translator.translateText(
-					text,
-					null,
-					targetLang,
-					{
-						preserveFormatting: true,
-						tagHandling: "xml",
-						ignoreTags: ["keep"],
-					},
-				);
+      // Process all target languages in parallel
+      const translatePromises = targetLanguages.map(async (targetLanguage) => {
+        const targetLang = targetLanguage as TargetLanguageCode
+        const textResult = await translator.translateText(text, null, targetLang, {
+          preserveFormatting: true,
+          tagHandling: 'xml',
+          ignoreTags: ['keep'],
+        })
 
-				const translatedText = textResult.text;
+        const translatedText = textResult.text
 
-				if (translatedText === undefined) {
-					console.error(`got undefined translatedText, skipping for ${targetLang}`)
-					return
-				}
-				const resultText = removeKeepTagsFromString(translatedText);
+        if (translatedText === undefined) {
+          console.error(`got undefined translatedText, skipping for ${targetLang}`)
+          return
+        }
 
-				const outputFileName = buildOutputFileName(targetLang, outputFileNamePattern);
-				const outputFolderPath = path.dirname(outputFileName);
-				if (!fs.existsSync(outputFolderPath)) {
-					fs.mkdirSync(outputFolderPath, { recursive: true });
-				}
-				fs.writeFile(outputFileName, resultText, function (err) {
-					if (err) return console.info(err);
-					console.info(`Translated ${targetLang}`);
-				});
-			}
-		});
+        const resultText = removeKeepTagsFromString(translatedText)
+        const outputFileName = buildOutputFileName(targetLang, outputFileNamePattern)
+        const outputFolderPath = path.dirname(outputFileName)
+
+        // Ensure output directory exists
+        if (!fs.existsSync(outputFolderPath)) {
+          await fs.promises.mkdir(outputFolderPath, { recursive: true })
+        }
+
+        // Write the translated file
+        await fs.promises.writeFile(outputFileName, resultText)
+        console.info(`Translated ${targetLang}`)
+      })
+
+      // Wait for all translations to complete
+      await Promise.all(translatePromises)
+    } catch (err) {
+      console.info('Error reading file', err)
+    }
 	} else if (fileExtension === ".json") {
-		fs.readFile(inputFilePath, "utf8", async (err, jsonString) => {
-			if (err) {
-				console.info("Error reading file", err);
-				return;
-			}
+			const jsonString = await fs.promises.readFile(inputFilePath, 'utf8').catch((err) => {
+        console.info('Error reading file', err)
+        return ''
+      })
 
-			try {
-				const inputJson = JSON.parse(jsonString);
-				const translatedRecords = {} as TranslatedJSONResults;
-				const translatedResults = await translateRecursive(inputJson, targetLanguages, translator, translatedRecords);
+      let inputJson = null
+      try {
+        inputJson = JSON.parse(jsonString)
+      } catch (parseError) {
+        console.info('Error parsing JSON string', parseError)
+      }
 
-				for (const targetLanguage of targetLanguages) {
-					const targetLang = targetLanguage as TargetLanguageCode;
-					const outputFileName = buildOutputFileName(targetLang, outputFileNamePattern);
-					const resultJson = JSON.stringify(translatedResults[targetLang]);
-					const outputFolderPath = path.dirname(outputFileName);
-					if (!fs.existsSync(outputFolderPath)) {
-						fs.mkdirSync(outputFolderPath, { recursive: true });
-					}
-					fs.writeFile(outputFileName, resultJson, function (err) {
-						if (err) return console.info(err);
-						console.info(`Translated ${targetLang}`);
-					});
-				}
-			} catch (err) {
-				console.info("Error parsing JSON string", err);
-			}
-		});
+      if (inputJson === null) {
+        return
+      }
+
+      const translatedRecords = {} as TranslatedJSONResults
+      const translatedResults = await translateRecursive(inputJson, targetLanguages, translator, translatedRecords)
+
+      // Process all target languages in parallel
+      const writePromises = targetLanguages.map(async (targetLanguage) => {
+        const targetLang = targetLanguage as TargetLanguageCode
+        const outputFileName = buildOutputFileName(targetLang, outputFileNamePattern)
+        const resultJson = JSON.stringify(translatedResults[targetLang])
+        const outputFolderPath = path.dirname(outputFileName)
+
+        // Ensure output directory exists
+        if (!fs.existsSync(outputFolderPath)) {
+          await fs.promises.mkdir(outputFolderPath, { recursive: true })
+        }
+
+        // Write the translated file
+        await fs.promises.writeFile(outputFileName, resultJson)
+        console.info(`Translated ${targetLang}`)
+      })
+
+      // Wait for all files to be written
+      await Promise.all(writePromises)
 	}
 }
