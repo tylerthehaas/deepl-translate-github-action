@@ -1,73 +1,73 @@
-import type { TargetLanguageCode, Translator } from "deepl-node";
-import fs from "fs";
-import path from "path";
-import { TranslatedJSONResults, buildOutputFileName, removeKeepTagsFromString, replaceAll, translateRecursive } from "./utils";
+import type { TargetLanguageCode, TextResult, Translator } from 'deepl-node'
+import fs from 'fs'
+import path from 'path'
+import {
+  buildOutputFileName,
+  collectAllStringsFromJson,
+  removeKeepTagsFromString,
+  replaceAll,
+  translateStrings,
+} from './utils'
 
 interface HTMLlikeParams {
-	startTagForNoTranslate?: string;
-	endTagForNoTranslate?: string;
+  startTagForNoTranslate?: string
+  endTagForNoTranslate?: string
 }
 
 export interface MainFunctionParams extends HTMLlikeParams {
-	translator: Translator;
-	inputFilePath: string;
-	outputFileNamePattern: string;
-	tempFilePath: string;
-	fileExtensionsThatAllowForIgnoringBlocks: string[];
-	targetLanguages: TargetLanguageCode[];
+  translator: Translator
+  inputFilePath: string
+  outputFileNamePattern: string
+  tempFilePath: string
+  fileExtensionsThatAllowForIgnoringBlocks: string[]
+  targetLanguages: TargetLanguageCode[]
 }
 
 export async function main(params: MainFunctionParams) {
-	const {
-		translator,
-		inputFilePath,
-		outputFileNamePattern,
-		startTagForNoTranslate,
-		endTagForNoTranslate,
-		tempFilePath,
-		fileExtensionsThatAllowForIgnoringBlocks,
-		targetLanguages,
-	} = params;
-	const fileExtension = path.extname(inputFilePath);
-	const isFileHtmlLike =
-		fileExtensionsThatAllowForIgnoringBlocks.includes(fileExtension);
+  const {
+    translator,
+    inputFilePath,
+    outputFileNamePattern,
+    startTagForNoTranslate,
+    endTagForNoTranslate,
+    tempFilePath,
+    fileExtensionsThatAllowForIgnoringBlocks,
+    targetLanguages,
+  } = params
+  const fileExtension = path.extname(inputFilePath)
+  const isFileHtmlLike = fileExtensionsThatAllowForIgnoringBlocks.includes(fileExtension)
 
-	if (isFileHtmlLike) {
-		const inputText = fs.readFileSync(inputFilePath, "utf8");
-		let textWithNoTranslateTagsReplaced = inputText;
-		if (startTagForNoTranslate && endTagForNoTranslate) {
-			const textWithNoTranslateStartTagReplaced = replaceAll(
-				inputText,
-				startTagForNoTranslate,
-				"<keep>",
-			);
-			const textWithNoTranslateEndTagReplaced = replaceAll(
-				textWithNoTranslateStartTagReplaced,
-				endTagForNoTranslate,
-				"</keep>",
-			);
+  if (isFileHtmlLike) {
+    const inputText = fs.readFileSync(inputFilePath, 'utf8')
+    let textWithNoTranslateTagsReplaced = inputText
+    if (startTagForNoTranslate && endTagForNoTranslate) {
+      const textWithNoTranslateStartTagReplaced = replaceAll(inputText, startTagForNoTranslate, '<keep>')
+      const textWithNoTranslateEndTagReplaced = replaceAll(
+        textWithNoTranslateStartTagReplaced,
+        endTagForNoTranslate,
+        '</keep>',
+      )
 
-			textWithNoTranslateTagsReplaced = textWithNoTranslateEndTagReplaced;
-		}
+      textWithNoTranslateTagsReplaced = textWithNoTranslateEndTagReplaced
+    }
 
-		let textToBeWrittenToTempFile = textWithNoTranslateTagsReplaced;
+    let textToBeWrittenToTempFile = textWithNoTranslateTagsReplaced
 
-		console.debug("textToBeWrittenToTempFile: ", textToBeWrittenToTempFile);
+    console.debug('textToBeWrittenToTempFile: ', textToBeWrittenToTempFile)
 
-		fs.writeFileSync(tempFilePath, textToBeWrittenToTempFile);
+    fs.writeFileSync(tempFilePath, textToBeWrittenToTempFile)
 
-		const tempFileExists = fs.existsSync(tempFilePath);
-		console.debug("tempFileExists: ", tempFileExists);
-		const translateFilePath = tempFileExists ? tempFilePath : inputFilePath;
+    const tempFileExists = fs.existsSync(tempFilePath)
+    console.debug('tempFileExists: ', tempFileExists)
+    const translateFilePath = tempFileExists ? tempFilePath : inputFilePath
 
-		try {
+    try {
       const text = await fs.promises.readFile(translateFilePath, 'utf8')
 
       console.info(`Translating the input file into ${targetLanguages.length} languages...`)
 
       // Process all target languages in parallel
-      const translatePromises = targetLanguages.map(async (targetLanguage) => {
-        const targetLang = targetLanguage as TargetLanguageCode
+      const translatePromises = targetLanguages.map(async (targetLang: TargetLanguageCode) => {
         const textResult = await translator.translateText(text, null, targetLang, {
           preserveFormatting: true,
           tagHandling: 'xml',
@@ -100,44 +100,49 @@ export async function main(params: MainFunctionParams) {
     } catch (err) {
       console.info('Error reading file', err)
     }
-	} else if (fileExtension === ".json") {
-			const jsonString = await fs.promises.readFile(inputFilePath, 'utf8').catch((err) => {
-        console.info('Error reading file', err)
-        return ''
-      })
+  } else if (fileExtension === '.json') {
+    const jsonString = await fs.promises.readFile(inputFilePath, 'utf8').catch((err) => {
+      console.info('Error reading file', err)
+      return ''
+    })
 
-      let inputJson = null
-      try {
-        inputJson = JSON.parse(jsonString)
-      } catch (parseError) {
-        console.info('Error parsing JSON string', parseError)
-      }
+    let inputJson = null
+    try {
+      inputJson = JSON.parse(jsonString)
+    } catch (parseError) {
+      console.info('Error parsing JSON string', parseError)
+    }
 
-      if (inputJson === null) {
-        return
-      }
+    if (inputJson === null) {
+      return
+    }
 
-      const translatedRecords = {} as TranslatedJSONResults
-      const translatedResults = await translateRecursive(inputJson, targetLanguages, translator, translatedRecords)
+    const { keys: jsonKeys, values: inputJsonStrings } = collectAllStringsFromJson(inputJson)
 
-      // Process all target languages in parallel
-      const writePromises = targetLanguages.map(async (targetLanguage) => {
-        const targetLang = targetLanguage as TargetLanguageCode
-        const outputFileName = buildOutputFileName(targetLang, outputFileNamePattern)
-        const resultJson = JSON.stringify(translatedResults[targetLang])
-        const outputFolderPath = path.dirname(outputFileName)
+    const translatePromises = targetLanguages.map(
+      (targetLang: TargetLanguageCode): Promise<TextResult[]> =>
+        translateStrings(inputJsonStrings, targetLang, translator),
+    )
 
-        // Ensure output directory exists
-        if (!fs.existsSync(outputFolderPath)) {
-          await fs.promises.mkdir(outputFolderPath, { recursive: true })
-        }
+    const translatedResults = await Promise.all(translatePromises)
 
-        // Write the translated file
-        await fs.promises.writeFile(outputFileName, resultJson)
-        console.info(`Translated ${targetLang}`)
-      })
+    // Process all target languages in parallel
+    // const writePromises = targetLanguages.map(async (targetLang: TargetLanguageCode) => {
+    //   const outputFileName = buildOutputFileName(targetLang, outputFileNamePattern)
+    //   const resultJson = JSON.stringify(translatedResults[targetLang])
+    //   const outputFolderPath = path.dirname(outputFileName)
 
-      // Wait for all files to be written
-      await Promise.all(writePromises)
-	}
+    //   // Ensure output directory exists
+    //   if (!fs.existsSync(outputFolderPath)) {
+    //     await fs.promises.mkdir(outputFolderPath, { recursive: true })
+    //   }
+
+    //   // Write the translated file
+    //   await fs.promises.writeFile(outputFileName, resultJson)
+    //   console.info(`Translated ${targetLang}`)
+    // })
+
+    // Wait for all files to be written
+    // await Promise.all(writePromises)
+  }
 }

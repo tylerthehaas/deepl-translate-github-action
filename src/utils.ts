@@ -104,72 +104,81 @@ function collectAllStringsFromJson(json: Record<string, any>, prefix: string = '
   return { keys, values }
 }
 
-export const applyRecursive = async (
-  inputJson: Record<string, any>,
-  path: string[] = [],
-  operation: Function,
-  operationArgs: any[],
-) => {
-  const keys = Object.keys(inputJson)
+// export const applyRecursive = async (
+//   inputJson: Record<string, any>,
+//   path: string[] = [],
+//   operation: Function,
+//   operationArgs: any[],
+// ) => {
+//   const keys = Object.keys(inputJson)
 
-  for (const key of keys) {
-    const newPath = [...path, key]
+//   for (const key of keys) {
+//     const newPath = [...path, key]
 
-    if (typeof inputJson[key] === 'object') {
-      await applyRecursive(inputJson[key], newPath, operation, operationArgs)
-    } else {
-      await operation(inputJson[key], newPath, ...operationArgs)
-    }
-  }
-}
+//     if (typeof inputJson[key] === 'object') {
+//       await applyRecursive(inputJson[key], newPath, operation, operationArgs)
+//     } else {
+//       await operation(inputJson[key], newPath, ...operationArgs)
+//     }
+//   }
+// }
 
-const translateRecursive = async (
-  inputJson: Record<string, any>,
-  targetLanguages: TargetLanguageCode[],
-  translator: Translator,
-  translatedResults: TranslatedJSONResults,
-) => {
-  const translate = async (
-    value: string,
-    path: string[],
-    targetLanguages: TargetLanguageCode[],
-    translator: Translator,
-    translatedResults: TranslatedJSONResults,
-  ) => {
-    const textToBeTranslated = replaceParameterStringsInJSONValueWithKeepTags(value)
+// const translateRecursive = async (
+//   inputJson: Record<string, any>,
+//   targetLanguages: TargetLanguageCode[],
+//   translator: Translator,
+//   translatedResults: TranslatedJSONResults,
+// ) => {
+//   const translate = async (
+//     value: string,
+//     path: string[],
+//     targetLanguages: TargetLanguageCode[],
+//     translator: Translator,
+//     translatedResults: TranslatedJSONResults,
+//   ) => {
+//     const textToBeTranslated = replaceParameterStringsInJSONValueWithKeepTags(value)
 
-    for (const targetLanguage of targetLanguages) {
-      const textResult = (await translator.translateText(textToBeTranslated, null, targetLanguage, {
-        preserveFormatting: true,
-        tagHandling: 'xml',
-        ignoreTags: ['keep'],
-      })) as TextResult
+//     for (const targetLanguage of targetLanguages) {
+//       const textResult = (await translator.translateText(textToBeTranslated, null, targetLanguage, {
+//         preserveFormatting: true,
+//         tagHandling: 'xml',
+//         ignoreTags: ['keep'],
+//       })) as TextResult
 
-      if (!translatedResults[targetLanguage]) {
-        translatedResults[targetLanguage] = {}
-      }
+//       if (!translatedResults[targetLanguage]) {
+//         translatedResults[targetLanguage] = {}
+//       }
 
-      const translatedText = textResult.text
-      const resultText = removeKeepTagsFromString(translatedText)
+//       const translatedText = textResult.text
+//       const resultText = removeKeepTagsFromString(translatedText)
 
-      // Assign the translated text to its original position in object
-      let currentKey: Record<string, any> = translatedResults[targetLanguage]
-      for (let i = 0; i < path.length; i++) {
-        if (i === path.length - 1) {
-          currentKey[path[i]] = resultText
-        } else {
-          if (!currentKey[path[i]]) {
-            currentKey[path[i]] = {}
-          }
-          currentKey = currentKey[path[i]]
-        }
-      }
-    }
-  }
+//       // Assign the translated text to its original position in object
+//       let currentKey: Record<string, any> = translatedResults[targetLanguage]
+//       for (let i = 0; i < path.length; i++) {
+//         if (i === path.length - 1) {
+//           currentKey[path[i]] = resultText
+//         } else {
+//           if (!currentKey[path[i]]) {
+//             currentKey[path[i]] = {}
+//           }
+//           currentKey = currentKey[path[i]]
+//         }
+//       }
+//     }
+//   }
 
-  await applyRecursive(inputJson, [], translate, [targetLanguages, translator, translatedResults])
+//   await applyRecursive(inputJson, [], translate, [targetLanguages, translator, translatedResults])
 
-  return translatedResults
+//   return translatedResults
+// }
+
+function translateStrings(sourceStrings: string[], targetLanguage: TargetLanguageCode, translator: Translator): Promise<TextResult[]> {
+  const textsToBeTranslated = sourceStrings.map(replaceParameterStringsInJSONValueWithKeepTags)
+  return translator.translateText(textsToBeTranslated, null, targetLanguage, {
+    preserveFormatting: true,
+    tagHandling: 'xml',
+    ignoreTags: ['keep'],
+  })
 }
 
 function buildOutputFileName(targetLang: string, outputFileNamePattern: string) {
@@ -180,7 +189,7 @@ export {
   replaceAll,
   removeKeepTagsFromString,
   replaceParameterStringsInJSONValueWithKeepTags,
-  translateRecursive,
+  translateStrings,
   buildOutputFileName,
   TranslatedJSONResults,
   collectAllStringsFromJson,
