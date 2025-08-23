@@ -104,40 +104,37 @@ function collectAllStringsFromJson(json: Record<string, any>, prefix: string = '
   return { keys, values }
 }
 
-/**
- * Wrapper function that adds exponential backoff retry logic for rate limiting
- */
-async function translateWithRetry(
+async function translateWithExponentialBackoffRetry(
   batch: string[],
   targetLanguage: TargetLanguageCode,
   translator: Translator,
   maxRetries: number = 5,
-  baseDelay: number = 1000
+  baseDelay: number = 1000,
 ): Promise<TextResult[]> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await translator.translateText(batch, null, targetLanguage, {
+      return (await translator.translateText(batch, null, targetLanguage, {
         preserveFormatting: true,
         tagHandling: 'xml',
         ignoreTags: ['keep'],
-      }) as TextResult[]
+      })) as TextResult[]
     } catch (error: any) {
       if (error.message?.includes('Too many requests') || error.status === 429) {
         if (attempt === maxRetries) {
           throw error
         }
-        
+
         const delay = baseDelay * Math.pow(2, attempt)
         console.log(`Rate limited (429) on attempt ${attempt + 1}, retrying in ${delay}ms...`)
-        
-        await new Promise(resolve => setTimeout(resolve, delay))
+
+        await new Promise((resolve) => setTimeout(resolve, delay))
         continue
       }
-      
+
       throw error
     }
   }
-  
+
   throw new Error('Unexpected error in translateWithRetry')
 }
 
@@ -160,7 +157,7 @@ function translateStrings(
 
     if (currentBatchSize + textSizeBytes > maxTextSizeBytes) {
       if (currentBatch.length > 0) {
-        const promise = translateWithRetry(currentBatch, targetLanguage, translator)
+        const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator)
         promises.push(promise)
       }
 
@@ -174,7 +171,7 @@ function translateStrings(
 
   // Don't forget the last batch
   if (currentBatch.length > 0) {
-    const promise = translateWithRetry(currentBatch, targetLanguage, translator)
+    const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator)
     promises.push(promise)
   }
 
@@ -204,8 +201,6 @@ function buildOutputJson(translatedTexts: string[], jsonKeys: string[]): Record<
     const key = jsonKeys[i]
     const value = translatedTexts[i]
 
-    // Split the key by dots, but handle escaped dots
-    // We need to split by dots that are NOT preceded by a backslash
     const keyParts = key.split(/(?<!\\)\./)
 
     let currentLevel = result
@@ -214,13 +209,9 @@ function buildOutputJson(translatedTexts: string[], jsonKeys: string[]): Record<
       const isLastPart = j === keyParts.length - 1
 
       if (isLastPart) {
-        // This is the final part, assign the value
-        // Unescape any literal dots in the final key
         const finalKey = part.replace(/\\./g, '.')
         currentLevel[finalKey] = value
       } else {
-        // This is a nested level, create object if it doesn't exist
-        // Unescape any literal dots in the intermediate key
         const unescapedPart = part.replace(/\\./g, '.')
         if (!currentLevel[unescapedPart]) {
           currentLevel[unescapedPart] = {}
