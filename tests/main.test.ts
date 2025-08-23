@@ -78,9 +78,13 @@ describe('main - HTMLlike files', () => {
 
 describe('main - JSON files', () => {
   const mockTranslator = {
-    translateText: vi.fn().mockResolvedValue({
-      text: 'translated text',
-    }),
+    translateText: vi
+      .fn()
+      .mockResolvedValue([
+        { text: 'translated text' },
+        { text: 'another translated text' },
+        { text: 'third translated text' },
+      ]),
   } as any
 
   let mockTranslatorSpy: MockInstance

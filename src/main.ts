@@ -5,6 +5,7 @@ import {
   buildOutputFileName,
   buildOutputJson,
   collectAllStringsFromJson,
+  groupItemsByLang,
   removeKeepTagsFromString,
   replaceAll,
   translateStrings,
@@ -125,7 +126,7 @@ export async function main(params: MainFunctionParams) {
     )
 
     const translatedResults = await Promise.all(translatePromises)
-    const translatedTexts = translatedResults.map((result) => ({ lang: result.lang, text: result.text }))
+    const translatedTexts = groupItemsByLang(translatedResults)
 
     // Process all target languages in parallel
     const writePromises = targetLanguages.map(async (targetLang: TargetLanguageCode, index: number) => {
@@ -137,7 +138,9 @@ export async function main(params: MainFunctionParams) {
         await fs.promises.mkdir(outputFolderPath, { recursive: true })
       }
 
-      const resultJson = buildOutputJson(translatedTexts[index], jsonKeys)
+      const translatedTextForLang = translatedTexts[targetLang]
+
+      const resultJson = buildOutputJson(translatedTextForLang, jsonKeys)
       const resultJsonString = JSON.stringify(resultJson, null, 2)
 
       // Write the translated file

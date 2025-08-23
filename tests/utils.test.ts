@@ -7,6 +7,8 @@ import {
   buildOutputFileName,
   buildOutputJson,
   translateStrings,
+  groupItemsByLang,
+  type TranslatedTextResult,
 } from '../src/utils'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -518,7 +520,7 @@ describe('collectAllStringsFromJson', () => {
     const translationResult = await result[0]
     const totalTime = Date.now() - startTime
 
-    expect(translationResult).toEqual([{ text: 'translated' }])
+    expect(translationResult).toEqual({ lang: 'es', text: ['translated'] })
     expect(mockTranslator.translateText).toHaveBeenCalledTimes(2)
 
     // Verify that the delay was approximately 1000ms (base delay)
@@ -566,7 +568,7 @@ describe('collectAllStringsFromJson', () => {
     const translationResult = await result[0]
     const totalTime = Date.now() - startTime
 
-    expect(translationResult).toEqual([{ text: 'translated' }])
+    expect(translationResult).toEqual({ lang: 'es', text: ['translated'] })
     expect(mockTranslator.translateText).toHaveBeenCalledTimes(4)
 
     // Verify that the total delay was approximately:
@@ -726,6 +728,106 @@ describe('buildOutputJson', () => {
       notifications: {
         error: 'Error (status code: {{statusCode}})',
       },
+    })
+  })
+})
+
+describe('groupItemsByLang', () => {
+  test('should group items by language code', () => {
+    const input: TranslatedTextResult[] = [
+      { lang: 'es', text: ['hola', 'mundo'] },
+      { lang: 'fr', text: ['bonjour'] },
+      { lang: 'es', text: ['adios'] },
+      { lang: 'de', text: ['hallo'] },
+      { lang: 'fr', text: ['au revoir'] },
+    ]
+
+    const result = groupItemsByLang(input)
+
+    expect(result).toEqual({
+      es: ['hola', 'mundo', 'adios'],
+      fr: ['bonjour', 'au revoir'],
+      de: ['hallo'],
+    })
+  })
+
+  test('should handle single language with multiple items', () => {
+    const input: TranslatedTextResult[] = [
+      { lang: 'es', text: ['hola'] },
+      { lang: 'es', text: ['mundo'] },
+      { lang: 'es', text: ['adios'] },
+    ]
+
+    const result = groupItemsByLang(input)
+
+    expect(result).toEqual({
+      es: ['hola', 'mundo', 'adios'],
+    })
+  })
+
+  test('should handle single item per language', () => {
+    const input: TranslatedTextResult[] = [
+      { lang: 'es', text: ['hola'] },
+      { lang: 'fr', text: ['bonjour'] },
+      { lang: 'de', text: ['hallo'] },
+    ]
+
+    const result = groupItemsByLang(input)
+
+    expect(result).toEqual({
+      es: ['hola'],
+      fr: ['bonjour'],
+      de: ['hallo'],
+    })
+  })
+
+  test('should handle empty array', () => {
+    const input: TranslatedTextResult[] = []
+
+    const result = groupItemsByLang(input)
+
+    expect(result).toEqual({})
+  })
+
+  test('should handle single item', () => {
+    const input: TranslatedTextResult[] = [{ lang: 'es', text: ['hola'] }]
+
+    const result = groupItemsByLang(input)
+
+    expect(result).toEqual({
+      es: ['hola'],
+    })
+  })
+
+  test('should preserve order of text arrays within each language', () => {
+    const input: TranslatedTextResult[] = [
+      { lang: 'es', text: ['first', 'second'] },
+      { lang: 'es', text: ['third'] },
+      { lang: 'es', text: ['fourth', 'fifth'] },
+    ]
+
+    const result = groupItemsByLang(input)
+
+    expect(result.es).toEqual(['first', 'second', 'third', 'fourth', 'fifth'])
+  })
+
+  test('should handle mixed language codes including variants', () => {
+    const input: TranslatedTextResult[] = [
+      { lang: 'en-US', text: ['hello'] },
+      { lang: 'en-GB', text: ['hello'] },
+      { lang: 'pt-BR', text: ['olá'] },
+      { lang: 'pt-PT', text: ['olá'] },
+      { lang: 'zh', text: ['你好'] },
+    ]
+
+    const result = groupItemsByLang(input)
+
+    expect(result).toEqual({
+      'en-US': ['hello'],
+      'en-GB': ['hello'],
+      'pt-BR': ['olá'],
+      'pt-PT': ['olá'],
+      zh: ['你好'],
     })
   })
 })

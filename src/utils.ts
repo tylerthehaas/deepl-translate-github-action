@@ -1,6 +1,6 @@
 import type { TargetLanguageCode, Translator, TextResult } from "deepl-node";
 
-interface TranslatedTextResult {
+export interface TranslatedTextResult {
   lang: TargetLanguageCode
   text: string[]
 }
@@ -108,7 +108,7 @@ async function translateWithExponentialBackoffRetry(
   translator: Translator,
   maxRetries: number = 5,
   baseDelay: number = 1000,
-): Promise<TranslatedTextResult> {
+): Promise<TextResult[]> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const result = await translator.translateText(batch, null, targetLanguage, {
@@ -116,7 +116,7 @@ async function translateWithExponentialBackoffRetry(
         tagHandling: 'xml',
         ignoreTags: ['keep'],
       })
-      return { lang: targetLanguage, text: result.map((r) => r.text) }
+      return result
     } catch (error: any) {
       if (error.message?.includes('Too many requests') || error.status === 429) {
         if (attempt === maxRetries) {
@@ -135,6 +135,19 @@ async function translateWithExponentialBackoffRetry(
   }
 
   throw new Error('Unexpected error in translateWithRetry')
+}
+
+function groupItemsByLang(arr: TranslatedTextResult[]): Record<TargetLanguageCode, string[]> {
+  const grouped = arr.reduce((acc: Record<TargetLanguageCode, string[]>, currentItem: TranslatedTextResult) => {
+    if (acc[currentItem.lang]) {
+      acc[currentItem.lang] = acc[currentItem.lang].concat(currentItem.text)
+    } else {
+      acc[currentItem.lang] = currentItem.text
+    }
+    return acc
+  }, {} as Record<TargetLanguageCode, string[]>)
+
+  return grouped
 }
 
 function translateStrings(
@@ -156,7 +169,9 @@ function translateStrings(
 
     if (currentBatchSize + textSizeBytes > maxTextSizeBytes) {
       if (currentBatch.length > 0) {
-        const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator)
+        const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator).then(
+          (result) => ({ lang: targetLanguage, text: result.map((r) => r.text) }),
+        )
         promises.push(promise)
       }
 
@@ -170,7 +185,10 @@ function translateStrings(
 
   // Don't forget the last batch
   if (currentBatch.length > 0) {
-    const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator)
+    const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator).then((result) => ({
+      lang: targetLanguage,
+      text: result.map((r) => r.text),
+    }))
     promises.push(promise)
   }
 
@@ -227,6 +245,7 @@ export {
   replaceAll,
   removeKeepTagsFromString,
   replaceParameterStringsInJSONValueWithKeepTags,
+  groupItemsByLang,
   translateStrings,
   buildOutputFileName,
   buildOutputJson,
