@@ -493,6 +493,90 @@ describe('collectAllStringsFromJson', () => {
     expect(veryLongStringBatch).toBeDefined()
     expect(veryLongStringBatch[0]).toHaveLength(1) // Should be alone in its batch
   })
+
+  test('should handle rate limiting with exponential backoff', async () => {
+    let callCount = 0
+    const mockTranslator = {
+      translateText: vi.fn().mockImplementation(async () => {
+        callCount++
+        if (callCount === 1) {
+          const error = new Error('Too many requests, DeepL servers are currently experiencing high load') as any
+          error.status = 429
+          throw error
+        }
+        return [{ text: 'translated' }]
+      }),
+    } as any
+
+    const result = translateStrings(['test string'], 'es', mockTranslator)
+
+    expect(result).toHaveLength(1)
+    expect(Array.isArray(result)).toBe(true)
+
+    // Track timing to verify exponential backoff
+    const startTime = Date.now()
+    const translationResult = await result[0]
+    const totalTime = Date.now() - startTime
+
+    expect(translationResult).toEqual([{ text: 'translated' }])
+    expect(mockTranslator.translateText).toHaveBeenCalledTimes(2)
+
+    // Verify that the delay was approximately 1000ms (base delay)
+    // Allow some tolerance for test execution overhead
+    expect(totalTime).toBeGreaterThanOrEqual(900) // At least 900ms
+    expect(totalTime).toBeLessThanOrEqual(1500) // No more than 1500ms
+  }, 10000) // Increase timeout to 10 seconds
+
+  test('should handle non-rate-limit errors immediately', async () => {
+    const mockTranslator = {
+      translateText: vi.fn().mockRejectedValue(new Error('Authentication failed')),
+    } as any
+
+    const result = translateStrings(['test string'], 'es', mockTranslator)
+
+    expect(result).toHaveLength(1)
+
+    await expect(result[0]).rejects.toThrow('Authentication failed')
+
+    expect(mockTranslator.translateText).toHaveBeenCalledTimes(1)
+  })
+
+  test('should handle multiple rate limit retries with increasing delays', async () => {
+    let callCount = 0
+    const mockTranslator = {
+      translateText: vi.fn().mockImplementation(async () => {
+        callCount++
+        if (callCount <= 3) {
+          // First 3 calls fail with rate limit error
+          const error = new Error('Too many requests, DeepL servers are currently experiencing high load') as any
+          error.status = 429
+          throw error
+        }
+        // 4th call succeeds
+        return [{ text: 'translated' }]
+      }),
+    } as any
+
+    const result = translateStrings(['test string'], 'es', mockTranslator)
+
+    expect(result).toHaveLength(1)
+
+    // Track timing to verify exponential backoff progression
+    const startTime = Date.now()
+    const translationResult = await result[0]
+    const totalTime = Date.now() - startTime
+
+    expect(translationResult).toEqual([{ text: 'translated' }])
+    expect(mockTranslator.translateText).toHaveBeenCalledTimes(4)
+
+    // Verify that the total delay was approximately:
+    // 1st retry: 1000ms (base delay)
+    // 2nd retry: 2000ms (base * 2^1)
+    // 3rd retry: 4000ms (base * 2^2)
+    // Total: ~7000ms minimum
+    expect(totalTime).toBeGreaterThanOrEqual(6500) // At least 6.5 seconds
+    expect(totalTime).toBeLessThanOrEqual(9000) // No more than 9 seconds
+  }, 10000) // Increase timeout to 10 seconds
 })
 
 describe('buildOutputJson', () => {
