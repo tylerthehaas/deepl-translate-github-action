@@ -1,39 +1,37 @@
 import type { TargetLanguageCode, Translator, TextResult } from "deepl-node";
 
+interface TranslatedTextResult {
+  lang: TargetLanguageCode
+  text: string[]
+}
+
 function replaceAll(str: string, search: string, replacement: string): string {
-	let index = str.indexOf(search);
-	while (index != -1) {
-		str = str.replace(search, replacement);
-		index = str.indexOf(search);
-	}
-	return str;
+  let index = str.indexOf(search)
+  while (index != -1) {
+    str = str.replace(search, replacement)
+    index = str.indexOf(search)
+  }
+  return str
 }
 
 function replaceParameterStringsInJSONValueWithKeepTags(value: string): string {
-	const termRegex = /({{.*?}}|{.*?})/g;
-	return value.replace(termRegex, (match) => `<keep>${match}</keep>`);
+  const termRegex = /({{.*?}}|{.*?})/g
+  return value.replace(termRegex, (match) => `<keep>${match}</keep>`)
 }
 
 function removeKeepTagsFromString(str: string): string {
-	if (!str.includes("<keep>")) return str;
+  if (!str.includes('<keep>')) return str
 
-	const textWithNoTranslateStartTagReplaced = replaceAll(str, "<keep>", "");
-	const textWithNoTranslateEndTagReplaced = replaceAll(
-		textWithNoTranslateStartTagReplaced,
-		"</keep>",
-		"",
-	);
-	return textWithNoTranslateEndTagReplaced;
+  const textWithNoTranslateStartTagReplaced = replaceAll(str, '<keep>', '')
+  const textWithNoTranslateEndTagReplaced = replaceAll(textWithNoTranslateStartTagReplaced, '</keep>', '')
+  return textWithNoTranslateEndTagReplaced
 }
 
 type PossibleRecursive<T> = {
-	[K in keyof T]: T[K] extends object ? PossibleRecursive<T[K]> : T[K];
-};
+  [K in keyof T]: T[K] extends object ? PossibleRecursive<T[K]> : T[K]
+}
 
-type TranslatedJSONResults = Record<
-	TargetLanguageCode,
-	PossibleRecursive<Record<string, string>>
->;
+type TranslatedJSONResults = Record<TargetLanguageCode, PossibleRecursive<Record<string, string>>>
 
 interface CollectedStrings {
   keys: string[]
@@ -110,14 +108,15 @@ async function translateWithExponentialBackoffRetry(
   translator: Translator,
   maxRetries: number = 5,
   baseDelay: number = 1000,
-): Promise<TextResult[]> {
+): Promise<TranslatedTextResult> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return (await translator.translateText(batch, null, targetLanguage, {
+      const result = await translator.translateText(batch, null, targetLanguage, {
         preserveFormatting: true,
         tagHandling: 'xml',
         ignoreTags: ['keep'],
-      })) as TextResult[]
+      })
+      return { lang: targetLanguage, text: result.map((r) => r.text) }
     } catch (error: any) {
       if (error.message?.includes('Too many requests') || error.status === 429) {
         if (attempt === maxRetries) {
@@ -142,12 +141,12 @@ function translateStrings(
   sourceStrings: string[],
   targetLanguage: TargetLanguageCode,
   translator: Translator,
-): Promise<TextResult[]>[] {
+): Promise<TranslatedTextResult>[] {
   const textsToBeTranslated = sourceStrings.map(replaceParameterStringsInJSONValueWithKeepTags)
   const maxRequestSizeBytes = 128 * 1024 // 128 KiB total request limit
   const estimatedOverheadBytes = 2048 // Estimate ~2KB for headers, JSON structure, etc.
   const maxTextSizeBytes = maxRequestSizeBytes - estimatedOverheadBytes
-  const promises: Promise<TextResult[]>[] = []
+  const promises: Promise<TranslatedTextResult>[] = []
 
   let currentBatch: string[] = []
   let currentBatchSize = 0

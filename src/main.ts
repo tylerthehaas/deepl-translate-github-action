@@ -125,7 +125,7 @@ export async function main(params: MainFunctionParams) {
     )
 
     const translatedResults = await Promise.all(translatePromises)
-    const translatedTexts = translatedResults.map((result) => result.map((r) => r.text))
+    const translatedTexts = translatedResults.map((result) => ({ lang: result.lang, text: result.text }))
 
     // Process all target languages in parallel
     const writePromises = targetLanguages.map(async (targetLang: TargetLanguageCode, index: number) => {
