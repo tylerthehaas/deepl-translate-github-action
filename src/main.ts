@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import {
   buildOutputFileName,
+  buildOutputJson,
   collectAllStringsFromJson,
   removeKeepTagsFromString,
   replaceAll,
@@ -119,30 +120,32 @@ export async function main(params: MainFunctionParams) {
 
     const { keys: jsonKeys, values: inputJsonStrings } = collectAllStringsFromJson(inputJson)
 
-    const translatePromises = targetLanguages.map(
-      (targetLang: TargetLanguageCode): Promise<TextResult[]> =>
-        translateStrings(inputJsonStrings, targetLang, translator),
+    const translatePromises = targetLanguages.flatMap((targetLang: TargetLanguageCode) =>
+      translateStrings(inputJsonStrings, targetLang, translator),
     )
 
     const translatedResults = await Promise.all(translatePromises)
+    const translatedTexts = translatedResults.map((result) => result.map((r) => r.text))
 
     // Process all target languages in parallel
-    // const writePromises = targetLanguages.map(async (targetLang: TargetLanguageCode) => {
-    //   const outputFileName = buildOutputFileName(targetLang, outputFileNamePattern)
-    //   const resultJson = JSON.stringify(translatedResults[targetLang])
-    //   const outputFolderPath = path.dirname(outputFileName)
+    const writePromises = targetLanguages.map(async (targetLang: TargetLanguageCode, index: number) => {
+      const outputFileName = buildOutputFileName(targetLang, outputFileNamePattern)
+      const outputFolderPath = path.dirname(outputFileName)
 
-    //   // Ensure output directory exists
-    //   if (!fs.existsSync(outputFolderPath)) {
-    //     await fs.promises.mkdir(outputFolderPath, { recursive: true })
-    //   }
+      // Ensure output directory exists
+      if (!fs.existsSync(outputFolderPath)) {
+        await fs.promises.mkdir(outputFolderPath, { recursive: true })
+      }
 
-    //   // Write the translated file
-    //   await fs.promises.writeFile(outputFileName, resultJson)
-    //   console.info(`Translated ${targetLang}`)
-    // })
+      const resultJson = buildOutputJson(translatedTexts[index], jsonKeys)
+      const resultJsonString = JSON.stringify(resultJson, null, 2)
+
+      // Write the translated file
+      await fs.promises.writeFile(outputFileName, resultJsonString)
+      console.info(`Translated ${targetLang}`)
+    })
 
     // Wait for all files to be written
-    // await Promise.all(writePromises)
+    await Promise.all(writePromises)
   }
 }

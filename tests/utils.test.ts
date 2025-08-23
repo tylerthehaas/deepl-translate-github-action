@@ -1,11 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 import {
-  applyRecursive,
   removeKeepTagsFromString,
   replaceAll,
   replaceParameterStringsInJSONValueWithKeepTags,
   collectAllStringsFromJson,
   buildOutputFileName,
+  buildOutputJson,
+  translateStrings,
 } from '../src/utils'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -92,50 +93,6 @@ describe('replaceParameterStringsInJSONValueWithKeepTags', () => {
 
     expect(replaceParameterStringsInJSONValueWithKeepTags(input)).toEqual(expectedOutput)
   })
-})
-
-describe('applyRecursive', () => {
-  test('should append "translated" to all string values', async () => {
-    const input = {
-      a: {
-        b: 'test',
-        c: 'test2',
-      },
-      d: 'test3',
-    }
-    const expected = {
-      a: {
-        b: 'testtranslated',
-        c: 'test2translated',
-      },
-      d: 'test3translated',
-    }
-    const operation = async (value: string, path: string[]) => {
-      let obj = input
-      for (let key of path) {
-        if (typeof obj[key] === 'string') {
-          obj[key] += 'translated'
-        }
-        obj = obj[key]
-      }
-    }
-
-    await applyRecursive(input, [], operation, [])
-
-    expect(input).toEqual(expected)
-  })
-
-  test('should pass correct arguments to operation', async () => {
-    const input = { a: 'test' }
-    const operationArgs = [1, 2, 3]
-    const operation = vi.fn()
-
-    await applyRecursive(input, [], operation, operationArgs)
-
-    expect(operation).toHaveBeenCalledWith('test', ['a'], ...operationArgs)
-  })
-
-  // Here you can add more test cases according to your requirements
 })
 
 describe('collectAllStringsFromJson', () => {
@@ -498,5 +455,193 @@ describe('collectAllStringsFromJson', () => {
 
     const nestedDotKeyIndex = result.keys.indexOf('nested.dot\\.key')
     expect(result.values[nestedDotKeyIndex]).toBe('nested dot value')
+  })
+
+  test('should handle size-based batching for translateStrings', () => {
+    // Mock translator for testing
+    const mockTranslator = {
+      translateText: vi.fn().mockResolvedValue([{ text: 'translated' }]),
+    } as any
+
+    // Create strings of varying sizes to test batching
+    const shortStrings = Array(10).fill('short')
+    const mediumStrings = Array(5).fill('medium length string')
+    const longString = 'x'.repeat(100000) // ~100 KiB string
+    const veryLongString = 'x'.repeat(120000) // ~120 KiB string (just under the limit)
+
+    const allStrings = [...shortStrings, ...mediumStrings, longString, veryLongString]
+
+    const result = translateStrings(allStrings, 'es', mockTranslator)
+
+    // Should create multiple batches due to size constraints
+    expect(result.length).toBeGreaterThan(1)
+
+    // Verify that the very long string gets its own batch
+    expect(mockTranslator.translateText).toHaveBeenCalled()
+
+    // Check that no single batch exceeds the text size limit (128 KiB - overhead)
+    const maxTextSizeBytes = 128 * 1024 - 2048 // 128 KiB - 2KB overhead
+    const calls = mockTranslator.translateText.mock.calls
+    calls.forEach((call: any) => {
+      const batch = call[0] // First argument is the batch array
+      const batchSizeBytes = new TextEncoder().encode(batch.join('')).length
+      expect(batchSizeBytes).toBeLessThanOrEqual(maxTextSizeBytes)
+    })
+
+    // Verify that the very long string is in its own batch
+    const veryLongStringBatch = calls.find((call: any) => call[0].some((str: string) => str.length === 120000))
+    expect(veryLongStringBatch).toBeDefined()
+    expect(veryLongStringBatch[0]).toHaveLength(1) // Should be alone in its batch
+  })
+})
+
+describe('buildOutputJson', () => {
+  test('should handle simple flat object reconstruction', () => {
+    const translatedTexts = ['Hello', 'World']
+    const jsonKeys = ['greeting', 'message']
+
+    const result = buildOutputJson(translatedTexts, jsonKeys)
+
+    expect(result).toEqual({
+      greeting: 'Hello',
+      message: 'World',
+    })
+  })
+
+  test('should handle nested object reconstruction', () => {
+    const translatedTexts = ['Hello', 'World']
+    const jsonKeys = ['greeting', 'user.name']
+
+    const result = buildOutputJson(translatedTexts, jsonKeys)
+
+    expect(result).toEqual({
+      greeting: 'Hello',
+      user: {
+        name: 'World',
+      },
+    })
+  })
+
+  test('should handle deeply nested object reconstruction', () => {
+    const translatedTexts = ['deep message', 'another message', 'surface message', 'root message']
+    const jsonKeys = [
+      'level1.level2.level3.level4.message',
+      'level1.level2.level3.another',
+      'level1.level2.surface',
+      'root',
+    ]
+
+    const result = buildOutputJson(translatedTexts, jsonKeys)
+
+    expect(result).toEqual({
+      level1: {
+        level2: {
+          level3: {
+            level4: {
+              message: 'deep message',
+            },
+            another: 'another message',
+          },
+          surface: 'surface message',
+        },
+      },
+      root: 'root message',
+    })
+  })
+
+  test('should handle literal dots in keys (escaped dots)', () => {
+    const translatedTexts = [
+      'John Doe',
+      'secret123',
+      'production value',
+      '30',
+      'avatar.jpg',
+      'nested dot value',
+      'regular nested value',
+    ]
+    const jsonKeys = [
+      'user\\.name',
+      'api\\.key',
+      'config\\.env\\.prod',
+      'user.age',
+      'user.profile\\.picture',
+      'nested.dot\\.key',
+      'nested.regular',
+    ]
+
+    const result = buildOutputJson(translatedTexts, jsonKeys)
+
+    expect(result).toEqual({
+      'user.name': 'John Doe',
+      'api.key': 'secret123',
+      'config.env.prod': 'production value',
+      user: {
+        age: '30',
+        'profile.picture': 'avatar.jpg',
+      },
+      nested: {
+        'dot.key': 'nested dot value',
+        regular: 'regular nested value',
+      },
+    })
+  })
+
+  test('should handle mixed literal dots and nested objects', () => {
+    const translatedTexts = ['Hello', 'World', 'Universe']
+    const jsonKeys = ['greeting', 'user\\.profile.name', 'user\\.profile.description']
+
+    const result = buildOutputJson(translatedTexts, jsonKeys)
+
+    expect(result).toEqual({
+      greeting: 'Hello',
+      'user.profile': {
+        name: 'World',
+        description: 'Universe',
+      },
+    })
+  })
+
+  test('should handle empty arrays', () => {
+    const translatedTexts: string[] = []
+    const jsonKeys: string[] = []
+
+    const result = buildOutputJson(translatedTexts, jsonKeys)
+
+    expect(result).toEqual({})
+  })
+
+  test('should handle single key-value pair', () => {
+    const translatedTexts = ['Single value']
+    const jsonKeys = ['single']
+
+    const result = buildOutputJson(translatedTexts, jsonKeys)
+
+    expect(result).toEqual({
+      single: 'Single value',
+    })
+  })
+
+  test('should handle complex real-world example', () => {
+    const translatedTexts = ['Sign in to your account', 'Email', 'Create', 'Error (status code: {{statusCode}})']
+    const jsonKeys = ['pages.login.title', 'pages.login.fields.email', 'buttons.create', 'notifications.error']
+
+    const result = buildOutputJson(translatedTexts, jsonKeys)
+
+    expect(result).toEqual({
+      pages: {
+        login: {
+          title: 'Sign in to your account',
+          fields: {
+            email: 'Email',
+          },
+        },
+      },
+      buttons: {
+        create: 'Create',
+      },
+      notifications: {
+        error: 'Error (status code: {{statusCode}})',
+      },
+    })
   })
 })

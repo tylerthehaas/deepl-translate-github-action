@@ -104,85 +104,104 @@ function collectAllStringsFromJson(json: Record<string, any>, prefix: string = '
   return { keys, values }
 }
 
-// export const applyRecursive = async (
-//   inputJson: Record<string, any>,
-//   path: string[] = [],
-//   operation: Function,
-//   operationArgs: any[],
-// ) => {
-//   const keys = Object.keys(inputJson)
-
-//   for (const key of keys) {
-//     const newPath = [...path, key]
-
-//     if (typeof inputJson[key] === 'object') {
-//       await applyRecursive(inputJson[key], newPath, operation, operationArgs)
-//     } else {
-//       await operation(inputJson[key], newPath, ...operationArgs)
-//     }
-//   }
-// }
-
-// const translateRecursive = async (
-//   inputJson: Record<string, any>,
-//   targetLanguages: TargetLanguageCode[],
-//   translator: Translator,
-//   translatedResults: TranslatedJSONResults,
-// ) => {
-//   const translate = async (
-//     value: string,
-//     path: string[],
-//     targetLanguages: TargetLanguageCode[],
-//     translator: Translator,
-//     translatedResults: TranslatedJSONResults,
-//   ) => {
-//     const textToBeTranslated = replaceParameterStringsInJSONValueWithKeepTags(value)
-
-//     for (const targetLanguage of targetLanguages) {
-//       const textResult = (await translator.translateText(textToBeTranslated, null, targetLanguage, {
-//         preserveFormatting: true,
-//         tagHandling: 'xml',
-//         ignoreTags: ['keep'],
-//       })) as TextResult
-
-//       if (!translatedResults[targetLanguage]) {
-//         translatedResults[targetLanguage] = {}
-//       }
-
-//       const translatedText = textResult.text
-//       const resultText = removeKeepTagsFromString(translatedText)
-
-//       // Assign the translated text to its original position in object
-//       let currentKey: Record<string, any> = translatedResults[targetLanguage]
-//       for (let i = 0; i < path.length; i++) {
-//         if (i === path.length - 1) {
-//           currentKey[path[i]] = resultText
-//         } else {
-//           if (!currentKey[path[i]]) {
-//             currentKey[path[i]] = {}
-//           }
-//           currentKey = currentKey[path[i]]
-//         }
-//       }
-//     }
-//   }
-
-//   await applyRecursive(inputJson, [], translate, [targetLanguages, translator, translatedResults])
-
-//   return translatedResults
-// }
-
-function translateStrings(sourceStrings: string[], targetLanguage: TargetLanguageCode, translator: Translator): Promise<TextResult[]> {
+function translateStrings(
+  sourceStrings: string[],
+  targetLanguage: TargetLanguageCode,
+  translator: Translator,
+): Promise<TextResult[]>[] {
   const textsToBeTranslated = sourceStrings.map(replaceParameterStringsInJSONValueWithKeepTags)
-  return translator.translateText(textsToBeTranslated, null, targetLanguage, {
-    preserveFormatting: true,
-    tagHandling: 'xml',
-    ignoreTags: ['keep'],
-  })
+  const maxRequestSizeBytes = 128 * 1024 // 128 KiB total request limit
+  const estimatedOverheadBytes = 2048 // Estimate ~2KB for headers, JSON structure, etc.
+  const maxTextSizeBytes = maxRequestSizeBytes - estimatedOverheadBytes
+  const promises: Promise<TextResult[]>[] = []
+
+  let currentBatch: string[] = []
+  let currentBatchSize = 0
+
+  for (const text of textsToBeTranslated) {
+    const textSizeBytes = new TextEncoder().encode(text).length
+
+    if (currentBatchSize + textSizeBytes > maxTextSizeBytes) {
+      if (currentBatch.length > 0) {
+        const promise = translator.translateText(currentBatch, null, targetLanguage, {
+          preserveFormatting: true,
+          tagHandling: 'xml',
+          ignoreTags: ['keep'],
+        }) as Promise<TextResult[]>
+        promises.push(promise)
+      }
+
+      currentBatch = [text]
+      currentBatchSize = textSizeBytes
+    } else {
+      currentBatch.push(text)
+      currentBatchSize += textSizeBytes
+    }
+  }
+
+  // Don't forget the last batch
+  if (currentBatch.length > 0) {
+    const promise = translator.translateText(currentBatch, null, targetLanguage, {
+      preserveFormatting: true,
+      tagHandling: 'xml',
+      ignoreTags: ['keep'],
+    }) as Promise<TextResult[]>
+    promises.push(promise)
+  }
+
+  return promises
 }
 
 function buildOutputFileName(targetLang: string, outputFileNamePattern: string) {
   return outputFileNamePattern.replace(/\{language\}/g, targetLang)
+}
+
+/**
+ * Reconstructs a JSON object from translated texts and dot-notation keys
+ * Handles both nested object notation (e.g., 'foo.bar') and literal dots in keys (e.g., 'user\\.name')
+ * @param translatedTexts - Array of translated string values
+ * @param jsonKeys - Array of dot-notation keys (same length as translatedTexts)
+ * @returns Reconstructed JSON object
+ * @example
+ * // Input: translatedTexts: ['Hello', 'World'], jsonKeys: ['greeting', 'user.name']
+ * // Output: { greeting: 'Hello', user: { name: 'World' } }
+ * // Input: translatedTexts: ['John'], jsonKeys: ['user\\.name']
+ * // Output: { 'user.name': 'John' }
+ */
+function buildOutputJson(translatedTexts: string[], jsonKeys: string[]): Record<string, any> {
+  const result: Record<string, any> = {}
+
+  for (let i = 0; i < jsonKeys.length; i++) {
+    const key = jsonKeys[i]
+    const value = translatedTexts[i]
+
+    // Split the key by dots, but handle escaped dots
+    // We need to split by dots that are NOT preceded by a backslash
+    const keyParts = key.split(/(?<!\\)\./)
+
+    let currentLevel = result
+    for (let j = 0; j < keyParts.length; j++) {
+      const part = keyParts[j]
+      const isLastPart = j === keyParts.length - 1
+
+      if (isLastPart) {
+        // This is the final part, assign the value
+        // Unescape any literal dots in the final key
+        const finalKey = part.replace(/\\./g, '.')
+        currentLevel[finalKey] = value
+      } else {
+        // This is a nested level, create object if it doesn't exist
+        // Unescape any literal dots in the intermediate key
+        const unescapedPart = part.replace(/\\./g, '.')
+        if (!currentLevel[unescapedPart]) {
+          currentLevel[unescapedPart] = {}
+        }
+        currentLevel = currentLevel[unescapedPart]
+      }
+    }
+  }
+
+  return result
 }
 
 export {
@@ -191,6 +210,7 @@ export {
   replaceParameterStringsInJSONValueWithKeepTags,
   translateStrings,
   buildOutputFileName,
+  buildOutputJson,
   TranslatedJSONResults,
   collectAllStringsFromJson,
   CollectedStrings,
