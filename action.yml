@@ -1,5 +1,5 @@
-name: 'DeepL Translate Github Action'
-author: 'Estee Tey'
+name: 'DeepL API Translate Github Action'
+author: 'Tyler Haas'
 description: 'Translate any document using DeepL Translate API'
 
 inputs:
