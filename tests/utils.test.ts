@@ -582,6 +582,16 @@ describe('collectAllStringsFromJson', () => {
 })
 
 describe('buildOutputJson', () => {
+  test('should handle string with <keep> tags', () => {
+    const translatedTexts = ['Hello <keep>World</keep>']
+    const jsonKeys = ['greeting']
+
+    const result = buildOutputJson(translatedTexts, jsonKeys)
+    expect(result).toEqual({
+      greeting: 'Hello World',
+    })
+  })
+
   test('should handle simple flat object reconstruction', () => {
     const translatedTexts = ['Hello', 'World']
     const jsonKeys = ['greeting', 'message']

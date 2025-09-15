@@ -129,7 +129,7 @@ export async function main(params: MainFunctionParams) {
     const translatedTexts = groupItemsByLang(translatedResults)
 
     // Process all target languages in parallel
-    const writePromises = targetLanguages.map(async (targetLang: TargetLanguageCode, index: number) => {
+    const writePromises = targetLanguages.map(async (targetLang: TargetLanguageCode) => {
       const outputFileName = buildOutputFileName(targetLang, outputFileNamePattern)
       const outputFolderPath = path.dirname(outputFileName)
 

@@ -218,7 +218,9 @@ function buildOutputJson(translatedTexts: string[], jsonKeys: string[]): Record<
     const key = jsonKeys[i]
     const value = translatedTexts[i]
 
-    const keyParts = key.split(/(?<!\\)\./)
+    // matches a dot that is not preceded by a backslash but not a double backslash
+    const dotNotationSplitRegex = /(?<!\\)\./
+    const keyParts = key.split(dotNotationSplitRegex)
 
     let currentLevel = result
     for (let j = 0; j < keyParts.length; j++) {
@@ -227,7 +229,7 @@ function buildOutputJson(translatedTexts: string[], jsonKeys: string[]): Record<
 
       if (isLastPart) {
         const finalKey = part.replace(/\\./g, '.')
-        currentLevel[finalKey] = value
+        currentLevel[finalKey] = removeKeepTagsFromString(value)
       } else {
         const unescapedPart = part.replace(/\\./g, '.')
         if (!currentLevel[unescapedPart]) {

@@ -94,7 +94,7 @@ describe('main - JSON files', () => {
   const fakeOutputFileNamePattern = `${fakeInputFileFolderPath}/{language}.json`
   const fakeTempFilePath = 'to_translate.txt'
   const testJSON = {
-    welcome: 'Welcome, {name}!',
+    welcome: 'Welcome, {{name}}!',
     language: 'Language',
     description: "This is a wonderful world isn't it?",
   }
