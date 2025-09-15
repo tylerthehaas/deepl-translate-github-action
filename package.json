@@ -1,6 +1,6 @@
 {
   "name": "deepl-translate-github-action",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "author": "Estee <estee.tsw@gmail.com>",
   "license": "MIT",
   "scripts": {
