@@ -129,3 +129,91 @@ describe('main - JSON files', () => {
     expect(mockTranslatorSpy).toHaveBeenCalled()
   })
 })
+
+describe('main - ES-419 translation from English', () => {
+  const mockTranslator = {
+    translateText: vi.fn().mockResolvedValue({
+      text: 'texto traducido',
+    }),
+  } as any
+
+  let mockTranslatorSpy: MockInstance
+
+  const fakeInputFileFolderPath = 'test'
+  const fakeInputFilename = 'inputFilePath.md'
+  const fakeOutputFileNamePattern = `${fakeInputFileFolderPath}/{language}.md`
+  const fakeTempFilePath = 'to_translate.txt'
+  const fakeReadFileResult = 'Hello, world!'
+
+  beforeEach(() => {
+    mockTranslatorSpy = vi.spyOn(mockTranslator, 'translateText')
+
+    // Mock fs methods
+    vi.mocked(fs.existsSync).mockReturnValue(true)
+    vi.mocked(fs.readFileSync).mockReturnValue('readFile sync result')
+    vi.mocked(fs.writeFileSync).mockReturnValue()
+
+    // Mock fs.promises methods
+    vi.mocked(fs.promises.readFile).mockResolvedValue(fakeReadFileResult)
+    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined)
+    vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined as any)
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('should successfully translate ES-419 from English with default modelType', async () => {
+    const testParams: MainFunctionParams = {
+      translator: mockTranslator,
+      inputFilePath: `${fakeInputFileFolderPath}/${fakeInputFilename}`,
+      outputFileNamePattern: fakeOutputFileNamePattern,
+      tempFilePath: fakeTempFilePath,
+      fileExtensionsThatAllowForIgnoringBlocks: ['.html', '.xml', '.md', '.txt'],
+      targetLanguages: ['es-419'],
+    }
+
+    await expect(main(testParams)).resolves.not.toThrow()
+    expect(mockTranslatorSpy).toHaveBeenCalled()
+    
+    // Verify translateText was called with correct parameters
+    const callArgs = mockTranslatorSpy.mock.calls[0]
+    expect(callArgs[0]).toBe(fakeReadFileResult) // text to translate
+    expect(callArgs[1]).toBe(null) // source language (null means auto-detect)
+    expect(callArgs[2]).toBe('es-419') // target language
+    expect(callArgs[3]).toEqual({
+      preserveFormatting: true,
+      tagHandling: 'xml',
+      ignoreTags: ['keep'],
+    })
+    // Should not include modelType when not provided
+    expect(callArgs[3]).not.toHaveProperty('modelType')
+  })
+
+  test('should successfully translate ES-419 from English with prefer_quality_optimized modelType', async () => {
+    const testParams: MainFunctionParams = {
+      translator: mockTranslator,
+      inputFilePath: `${fakeInputFileFolderPath}/${fakeInputFilename}`,
+      outputFileNamePattern: fakeOutputFileNamePattern,
+      tempFilePath: fakeTempFilePath,
+      fileExtensionsThatAllowForIgnoringBlocks: ['.html', '.xml', '.md', '.txt'],
+      targetLanguages: ['es-419'],
+      modelType: 'prefer_quality_optimized',
+    }
+
+    await expect(main(testParams)).resolves.not.toThrow()
+    expect(mockTranslatorSpy).toHaveBeenCalled()
+    
+    // Verify translateText was called with correct parameters including modelType
+    const callArgs = mockTranslatorSpy.mock.calls[0]
+    expect(callArgs[0]).toBe(fakeReadFileResult) // text to translate
+    expect(callArgs[1]).toBe(null) // source language (null means auto-detect)
+    expect(callArgs[2]).toBe('es-419') // target language
+    expect(callArgs[3]).toEqual({
+      preserveFormatting: true,
+      tagHandling: 'xml',
+      ignoreTags: ['keep'],
+      modelType: 'prefer_quality_optimized',
+    })
+  })
+})

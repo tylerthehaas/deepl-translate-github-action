@@ -10,7 +10,7 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "deepl-node": "^1.14.0"
+    "deepl-node": "^1.22.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.6",
