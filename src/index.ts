@@ -4,7 +4,20 @@ import path from "path";
 import { main, type ModelType } from "./main";
 
 const authKey = process.env.deepl_api_key as string;
-const translator = new Translator(authKey);
+
+// Parse timeout from environment variable if provided
+const timeoutEnv = process.env.timeout;
+let translatorOptions: { minTimeout?: number } | undefined;
+if (timeoutEnv) {
+  const timeoutValue = parseInt(timeoutEnv, 10);
+  if (!isNaN(timeoutValue) && timeoutValue > 0) {
+    translatorOptions = { minTimeout: timeoutValue };
+  } else {
+    console.warn(`Invalid timeout value: ${timeoutEnv}. Expected a positive number in milliseconds. Ignoring timeout parameter.`);
+  }
+}
+
+const translator = new Translator(authKey, translatorOptions);
 const inputFilePath = path.join(
 	process.env.GITHUB_WORKSPACE as string,
 	process.env.input_file_path as string,
