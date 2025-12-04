@@ -1,7 +1,7 @@
 import type { TargetLanguageCode } from "deepl-node";
 import { Translator } from 'deepl-node';
 import path from "path";
-import { main } from "./main";
+import { main, type ModelType } from "./main";
 
 const authKey = process.env.deepl_api_key as string;
 const translator = new Translator(authKey);
@@ -34,6 +34,17 @@ const fileExtensionsThatAllowForIgnoringBlocks = [".html", ".xml", ".md", ".txt"
 	
 	targetLanguages = targetLanguages.filter(lang => !excludedLanguages.includes(lang));
 
+	const modelTypeEnv = process.env.model_type;
+	let modelType: ModelType | undefined;
+	if (modelTypeEnv) {
+		const validModelTypes: ModelType[] = ['quality_optimized', 'prefer_quality_optimized', 'latency_optimized'];
+		if (validModelTypes.includes(modelTypeEnv as ModelType)) {
+			modelType = modelTypeEnv as ModelType;
+		} else {
+			console.warn(`Invalid model_type value: ${modelTypeEnv}. Valid values are: ${validModelTypes.join(', ')}. Ignoring model_type parameter.`);
+		}
+	}
+
 	await main({
 		translator,
 		inputFilePath,
@@ -43,5 +54,6 @@ const fileExtensionsThatAllowForIgnoringBlocks = [".html", ".xml", ".md", ".txt"
 		tempFilePath,
 		fileExtensionsThatAllowForIgnoringBlocks,
 		targetLanguages,
+		modelType,
 	});
 })();

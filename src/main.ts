@@ -16,6 +16,8 @@ interface HTMLlikeParams {
   endTagForNoTranslate?: string
 }
 
+export type ModelType = 'quality_optimized' | 'prefer_quality_optimized' | 'latency_optimized'
+
 export interface MainFunctionParams extends HTMLlikeParams {
   translator: Translator
   inputFilePath: string
@@ -23,6 +25,7 @@ export interface MainFunctionParams extends HTMLlikeParams {
   tempFilePath: string
   fileExtensionsThatAllowForIgnoringBlocks: string[]
   targetLanguages: TargetLanguageCode[]
+  modelType?: ModelType
 }
 
 export async function main(params: MainFunctionParams) {
@@ -35,6 +38,7 @@ export async function main(params: MainFunctionParams) {
     tempFilePath,
     fileExtensionsThatAllowForIgnoringBlocks,
     targetLanguages,
+    modelType,
   } = params
   const fileExtension = path.extname(inputFilePath)
   const isFileHtmlLike = fileExtensionsThatAllowForIgnoringBlocks.includes(fileExtension)
@@ -70,11 +74,22 @@ export async function main(params: MainFunctionParams) {
 
       // Process all target languages in parallel
       const translatePromises = targetLanguages.map(async (targetLang: TargetLanguageCode) => {
-        const textResult = await translator.translateText(text, null, targetLang, {
+        const translateOptions: {
+          preserveFormatting: boolean
+          tagHandling: 'xml'
+          ignoreTags: string[]
+          modelType?: ModelType
+        } = {
           preserveFormatting: true,
           tagHandling: 'xml',
           ignoreTags: ['keep'],
-        })
+        }
+        
+        if (modelType) {
+          translateOptions.modelType = modelType
+        }
+        
+        const textResult = await translator.translateText(text, null, targetLang, translateOptions)
 
         const translatedText = textResult.text
 
@@ -122,7 +137,7 @@ export async function main(params: MainFunctionParams) {
     const { keys: jsonKeys, values: inputJsonStrings } = collectAllStringsFromJson(inputJson)
 
     const translatePromises = targetLanguages.flatMap((targetLang: TargetLanguageCode) =>
-      translateStrings(inputJsonStrings, targetLang, translator),
+      translateStrings(inputJsonStrings, targetLang, translator, modelType),
     )
 
     const translatedResults = await Promise.all(translatePromises)
