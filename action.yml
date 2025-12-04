@@ -29,6 +29,9 @@ inputs:
     description: "End tag to ignore when translating"
     required: false
     default: <!-- /notranslate -->
+  model_type:
+    description: "Model type to use for translation. Valid values: quality_optimized, quality_optimized_preferred, latency_optimized"
+    required: false
 
 runs:
   using: composite
@@ -48,6 +51,7 @@ runs:
       ignore_terms: ${{ inputs.ignore_terms }}
       no_translate_start_tag: ${{ inputs.no_translate_start_tag }}
       no_translate_end_tag: ${{ inputs.no_translate_end_tag }}
+      model_type: ${{ inputs.model_type }}
     run: |
       cd ${{github.action_path}} && yarn install && yarn start
   - name: remove unused temp file if it exists

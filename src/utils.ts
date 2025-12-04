@@ -1,4 +1,5 @@
 import type { TargetLanguageCode, Translator, TextResult } from "deepl-node";
+import type { ModelType } from "./main";
 
 export interface TranslatedTextResult {
   lang: TargetLanguageCode
@@ -106,16 +107,28 @@ async function translateWithExponentialBackoffRetry(
   batch: string[],
   targetLanguage: TargetLanguageCode,
   translator: Translator,
+  modelType?: ModelType,
   maxRetries: number = 5,
   baseDelay: number = 1000,
 ): Promise<TextResult[]> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await translator.translateText(batch, null, targetLanguage, {
+      const translateOptions: {
+        preserveFormatting: boolean
+        tagHandling: 'xml'
+        ignoreTags: string[]
+        modelType?: ModelType
+      } = {
         preserveFormatting: true,
         tagHandling: 'xml',
         ignoreTags: ['keep'],
-      })
+      }
+      
+      if (modelType) {
+        translateOptions.modelType = modelType
+      }
+      
+      const result = await translator.translateText(batch, null, targetLanguage, translateOptions)
       return result
     } catch (error: any) {
       if (error.message?.includes('Too many requests') || error.status === 429) {
@@ -154,6 +167,7 @@ function translateStrings(
   sourceStrings: string[],
   targetLanguage: TargetLanguageCode,
   translator: Translator,
+  modelType?: ModelType,
 ): Promise<TranslatedTextResult>[] {
   const textsToBeTranslated = sourceStrings.map(replaceParameterStringsInJSONValueWithKeepTags)
   const maxRequestSizeBytes = 128 * 1024 // 128 KiB total request limit
@@ -169,7 +183,7 @@ function translateStrings(
 
     if (currentBatchSize + textSizeBytes > maxTextSizeBytes) {
       if (currentBatch.length > 0) {
-        const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator).then(
+        const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator, modelType).then(
           (result) => ({ lang: targetLanguage, text: result.map((r) => r.text) }),
         )
         promises.push(promise)
@@ -185,7 +199,7 @@ function translateStrings(
 
   // Don't forget the last batch
   if (currentBatch.length > 0) {
-    const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator).then((result) => ({
+    const promise = translateWithExponentialBackoffRetry(currentBatch, targetLanguage, translator, modelType).then((result) => ({
       lang: targetLanguage,
       text: result.map((r) => r.text),
     }))
