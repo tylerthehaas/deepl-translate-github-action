@@ -37,7 +37,7 @@ const fileExtensionsThatAllowForIgnoringBlocks = [".html", ".xml", ".md", ".txt"
 	const modelTypeEnv = process.env.model_type;
 	let modelType: ModelType | undefined;
 	if (modelTypeEnv) {
-		const validModelTypes: ModelType[] = ['quality_optimized', 'quality_optimized_preferred', 'latency_optimized'];
+		const validModelTypes: ModelType[] = ['quality_optimized', 'prefer_quality_optimized', 'latency_optimized'];
 		if (validModelTypes.includes(modelTypeEnv as ModelType)) {
 			modelType = modelTypeEnv as ModelType;
 		} else {

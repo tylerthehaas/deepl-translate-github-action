@@ -16,7 +16,7 @@ interface HTMLlikeParams {
   endTagForNoTranslate?: string
 }
 
-export type ModelType = 'quality_optimized' | 'quality_optimized_preferred' | 'latency_optimized'
+export type ModelType = 'quality_optimized' | 'prefer_quality_optimized' | 'latency_optimized'
 
 export interface MainFunctionParams extends HTMLlikeParams {
   translator: Translator
