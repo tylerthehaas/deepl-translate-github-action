@@ -257,6 +257,22 @@ function buildOutputJson(translatedTexts: string[], jsonKeys: string[]): Record<
   return result
 }
 
+function createTranslatorOptions(): {minTimeout?: number} | undefined {
+  // Parse timeout from environment variable if provided
+  const timeoutEnvValue = process.env.timeout;
+  let translatorOptions: { minTimeout?: number } | undefined;
+  if (timeoutEnvValue) {
+    const parsedTimeoutValue = parseInt(timeoutEnvValue, 10);
+    const isValidTimeout = !isNaN(parsedTimeoutValue) && parsedTimeoutValue > 0;
+    if (isValidTimeout) {
+      translatorOptions = { minTimeout: parsedTimeoutValue };
+    } else {
+      console.warn(`Invalid timeout value: ${timeoutEnvValue}. Expected a positive number in milliseconds. Ignoring timeout parameter.`);
+    }
+  }
+  return translatorOptions
+}
+
 export {
   replaceAll,
   removeKeepTagsFromString,
@@ -268,4 +284,5 @@ export {
   TranslatedJSONResults,
   collectAllStringsFromJson,
   CollectedStrings,
+  createTranslatorOptions,
 }
