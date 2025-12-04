@@ -2,20 +2,11 @@ import type { TargetLanguageCode } from "deepl-node";
 import { Translator } from 'deepl-node';
 import path from "path";
 import { main, type ModelType } from "./main";
+import { createTranslatorOptions } from "./utils";
 
 const authKey = process.env.deepl_api_key as string;
 
-// Parse timeout from environment variable if provided
-const timeoutEnv = process.env.timeout;
-let translatorOptions: { minTimeout?: number } | undefined;
-if (timeoutEnv) {
-  const timeoutValue = parseInt(timeoutEnv, 10);
-  if (!isNaN(timeoutValue) && timeoutValue > 0) {
-    translatorOptions = { minTimeout: timeoutValue };
-  } else {
-    console.warn(`Invalid timeout value: ${timeoutEnv}. Expected a positive number in milliseconds. Ignoring timeout parameter.`);
-  }
-}
+const translatorOptions = createTranslatorOptions();
 
 const translator = new Translator(authKey, translatorOptions);
 const inputFilePath = path.join(
