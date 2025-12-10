@@ -2,9 +2,12 @@ import type { TargetLanguageCode } from "deepl-node";
 import { Translator } from 'deepl-node';
 import path from "path";
 import { main, type ModelType } from "./main";
+import { createTranslatorOptions } from "./utils";
 
 const authKey = process.env.deepl_api_key as string;
-const translator = new Translator(authKey);
+const translatorOptions = createTranslatorOptions(process.env.timeout);
+
+const translator = new Translator(authKey, translatorOptions);
 const inputFilePath = path.join(
 	process.env.GITHUB_WORKSPACE as string,
 	process.env.input_file_path as string,

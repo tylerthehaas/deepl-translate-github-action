@@ -32,6 +32,9 @@ inputs:
   model_type:
     description: "Model type to use for translation. Valid values: quality_optimized, prefer_quality_optimized, latency_optimized"
     required: false
+  timeout:
+    description: "Connection timeout for each HTTP request retry, in milliseconds. If not provided, uses the default value (5000ms)"
+    required: false
 
 runs:
   using: composite
@@ -52,6 +55,7 @@ runs:
       no_translate_start_tag: ${{ inputs.no_translate_start_tag }}
       no_translate_end_tag: ${{ inputs.no_translate_end_tag }}
       model_type: ${{ inputs.model_type }}
+      timeout: ${{ inputs.timeout }}
     run: |
       cd ${{github.action_path}} && yarn install && yarn start
   - name: remove unused temp file if it exists
