@@ -5,8 +5,7 @@ import { main, type ModelType } from "./main";
 import { createTranslatorOptions } from "./utils";
 
 const authKey = process.env.deepl_api_key as string;
-
-const translatorOptions = createTranslatorOptions();
+const translatorOptions = createTranslatorOptions(process.env.timeout);
 
 const translator = new Translator(authKey, translatorOptions);
 const inputFilePath = path.join(

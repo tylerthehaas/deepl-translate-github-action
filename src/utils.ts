@@ -257,20 +257,28 @@ function buildOutputJson(translatedTexts: string[], jsonKeys: string[]): Record<
   return result
 }
 
-function createTranslatorOptions(): {minTimeout?: number} | undefined {
-  // Parse timeout from environment variable if provided
-  const timeoutEnvValue = process.env.timeout;
-  let translatorOptions: { minTimeout?: number } | undefined;
-  if (timeoutEnvValue) {
-    const parsedTimeoutValue = parseInt(timeoutEnvValue, 10);
-    const isValidTimeout = !isNaN(parsedTimeoutValue) && parsedTimeoutValue > 0;
-    if (isValidTimeout) {
-      translatorOptions = { minTimeout: parsedTimeoutValue };
-    } else {
-      console.warn(`Invalid timeout value: ${timeoutEnvValue}. Expected a positive number in milliseconds. Ignoring timeout parameter.`);
-    }
+/**
+ * Creates translator options from a timeout value.
+ * Pure function that validates and converts timeout string to translator options.
+ * @param timeoutValue - Timeout value as a string (in milliseconds), or undefined
+ * @returns Translator options with minTimeout if valid, undefined otherwise
+ */
+function createTranslatorOptions(timeoutValue: string | undefined): { minTimeout?: number } | undefined {
+  if (!timeoutValue) {
+    return undefined
   }
-  return translatorOptions
+
+  const parsedTimeoutValue = parseInt(timeoutValue, 10)
+  const isValidTimeout = !isNaN(parsedTimeoutValue) && parsedTimeoutValue > 0
+
+  if (isValidTimeout) {
+    return { minTimeout: parsedTimeoutValue }
+  } else {
+    console.warn(
+      `Invalid timeout value: ${timeoutValue}. Expected a positive number in milliseconds. Ignoring timeout parameter.`
+    )
+    return undefined
+  }
 }
 
 export {

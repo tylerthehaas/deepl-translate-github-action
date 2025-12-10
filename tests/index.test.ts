@@ -1,12 +1,42 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest'
-import { createTranslatorOptions } from '../src/utils'
+import { Translator } from 'deepl-node'
+
+// Mock deepl-node before any imports
+vi.mock('deepl-node', () => ({
+  Translator: vi.fn(),
+}))
+
+// Mock main to prevent it from running
+vi.mock('../src/main', () => ({
+  main: vi.fn(),
+}))
+
+// Mock utils to spy on createTranslatorOptions
+vi.mock('../src/utils', async () => {
+  const actual = await vi.importActual('../src/utils')
+  return {
+    ...actual,
+    createTranslatorOptions: vi.fn(),
+  }
+})
 
 describe('index - timeout parameter initialization', () => {
   const originalEnv = process.env
+  let mockTranslatorConstructor: ReturnType<typeof vi.fn>
+  let mockCreateTranslatorOptions: ReturnType<typeof vi.fn>
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     process.env = { ...originalEnv }
+
+    // Get fresh mocks
+    const { Translator } = await import('deepl-node')
+    mockTranslatorConstructor = vi.mocked(Translator)
+    mockTranslatorConstructor.mockClear()
+
+    const utils = await import('../src/utils')
+    mockCreateTranslatorOptions = vi.mocked(utils.createTranslatorOptions)
+    mockCreateTranslatorOptions.mockClear()
   })
 
   afterEach(() => {
@@ -14,101 +44,71 @@ describe('index - timeout parameter initialization', () => {
     vi.clearAllMocks()
   })
 
-  test('should return undefined when timeout is not provided', () => {
-    delete process.env.timeout
-
-    const result = createTranslatorOptions()
-
-    expect(result).toBeUndefined()
-  })
-
-  test('should return minTimeout when valid timeout is provided', () => {
+  test('should call createTranslatorOptions with timeout from environment and pass result to Translator', async () => {
+    process.env.deepl_api_key = 'test-api-key'
     process.env.timeout = '10000'
+    process.env.GITHUB_WORKSPACE = '/workspace'
+    process.env.input_file_path = 'test.md'
+    process.env.output_file_name_pattern = 'output.md'
 
-    const result = createTranslatorOptions()
+    // Mock the return value
+    mockCreateTranslatorOptions.mockReturnValue({ minTimeout: 10000 })
 
-    expect(result).toEqual({ minTimeout: 10000 })
+    // Mock Translator constructor
+    mockTranslatorConstructor.mockImplementation(() => ({
+      getTargetLanguages: vi.fn().mockResolvedValue([]),
+    }))
+
+    // Reset modules after setting env vars to ensure fresh import
+    vi.resetModules()
+    
+    // Re-import mocks after reset
+    const { Translator } = await import('deepl-node')
+    mockTranslatorConstructor = vi.mocked(Translator)
+    const utils = await import('../src/utils')
+    mockCreateTranslatorOptions = vi.mocked(utils.createTranslatorOptions)
+    mockCreateTranslatorOptions.mockReturnValue({ minTimeout: 10000 })
+    mockTranslatorConstructor.mockImplementation(() => ({
+      getTargetLanguages: vi.fn().mockResolvedValue([]),
+    }))
+
+    // Import index to trigger initialization
+    await import('../src/index')
+
+    // Wait a bit for the module to initialize
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(mockCreateTranslatorOptions).toHaveBeenCalledWith('10000')
+    expect(mockTranslatorConstructor).toHaveBeenCalledWith('test-api-key', { minTimeout: 10000 })
   })
 
-  test('should return undefined when timeout is empty string', () => {
-    process.env.timeout = ''
+  test('should call createTranslatorOptions with undefined when timeout is not set', async () => {
+    process.env.deepl_api_key = 'test-api-key'
+    delete process.env.timeout
+    process.env.GITHUB_WORKSPACE = '/workspace'
+    process.env.input_file_path = 'test.md'
+    process.env.output_file_name_pattern = 'output.md'
 
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // Reset modules after setting env vars to ensure fresh import
+    vi.resetModules()
+    
+    // Re-import mocks after reset
+    const { Translator } = await import('deepl-node')
+    mockTranslatorConstructor = vi.mocked(Translator)
+    const utils = await import('../src/utils')
+    mockCreateTranslatorOptions = vi.mocked(utils.createTranslatorOptions)
+    mockCreateTranslatorOptions.mockReturnValue(undefined)
+    mockTranslatorConstructor.mockImplementation(() => ({
+      getTargetLanguages: vi.fn().mockResolvedValue([]),
+    }))
 
-    const result = createTranslatorOptions()
+    // Import index to trigger initialization
+    await import('../src/index')
 
-    expect(result).toBeUndefined()
-    expect(consoleWarnSpy).not.toHaveBeenCalled()
+    // Wait a bit for the module to initialize
+    await new Promise((resolve) => setTimeout(resolve, 10))
 
-    consoleWarnSpy.mockRestore()
-  })
-
-  test('should return undefined and warn when timeout is invalid (non-numeric)', () => {
-    process.env.timeout = 'invalid'
-
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    const result = createTranslatorOptions()
-
-    expect(result).toBeUndefined()
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      'Invalid timeout value: invalid. Expected a positive number in milliseconds. Ignoring timeout parameter.'
-    )
-
-    consoleWarnSpy.mockRestore()
-  })
-
-  test('should return undefined and warn when timeout is zero', () => {
-    process.env.timeout = '0'
-
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    const result = createTranslatorOptions()
-
-    expect(result).toBeUndefined()
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      'Invalid timeout value: 0. Expected a positive number in milliseconds. Ignoring timeout parameter.'
-    )
-
-    consoleWarnSpy.mockRestore()
-  })
-
-  test('should return undefined and warn when timeout is negative', () => {
-    process.env.timeout = '-5000'
-
-    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    const result = createTranslatorOptions()
-
-    expect(result).toBeUndefined()
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      'Invalid timeout value: -5000. Expected a positive number in milliseconds. Ignoring timeout parameter.'
-    )
-
-    consoleWarnSpy.mockRestore()
-  })
-
-  test('should return minTimeout when timeout is a valid positive number', () => {
-    process.env.timeout = '5000'
-
-    const result = createTranslatorOptions()
-
-    expect(result).toEqual({ minTimeout: 5000 })
-  })
-
-  test('should return minTimeout when timeout is a large valid number', () => {
-    process.env.timeout = '30000'
-
-    const result = createTranslatorOptions()
-
-    expect(result).toEqual({ minTimeout: 30000 })
-  })
-
-  test('should handle timeout with decimal values by parsing as integer', () => {
-    process.env.timeout = '5000.99'
-
-    const result = createTranslatorOptions()
-
-    expect(result).toEqual({ minTimeout: 5000 })
+    expect(mockCreateTranslatorOptions).toHaveBeenCalledWith(undefined)
+    expect(mockTranslatorConstructor).toHaveBeenCalledWith('test-api-key', undefined)
   })
 })

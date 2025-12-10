@@ -8,6 +8,7 @@ import {
   buildOutputJson,
   translateStrings,
   groupItemsByLang,
+  createTranslatorOptions,
   type TranslatedTextResult,
 } from '../src/utils'
 import * as fs from 'fs'
@@ -579,6 +580,88 @@ describe('collectAllStringsFromJson', () => {
     expect(totalTime).toBeGreaterThanOrEqual(6500) // At least 6.5 seconds
     expect(totalTime).toBeLessThanOrEqual(9000) // No more than 9 seconds
   }, 10000) // Increase timeout to 10 seconds
+})
+
+describe('createTranslatorOptions', () => {
+  test('should return undefined when timeout is not provided', () => {
+    const result = createTranslatorOptions(undefined)
+
+    expect(result).toBeUndefined()
+  })
+
+  test('should return minTimeout when valid timeout is provided', () => {
+    const result = createTranslatorOptions('10000')
+
+    expect(result).toEqual({ minTimeout: 10000 })
+  })
+
+  test('should return undefined when timeout is empty string', () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = createTranslatorOptions('')
+
+    expect(result).toBeUndefined()
+    expect(consoleWarnSpy).not.toHaveBeenCalled()
+
+    consoleWarnSpy.mockRestore()
+  })
+
+  test('should return undefined and warn when timeout is invalid (non-numeric)', () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = createTranslatorOptions('invalid')
+
+    expect(result).toBeUndefined()
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      'Invalid timeout value: invalid. Expected a positive number in milliseconds. Ignoring timeout parameter.'
+    )
+
+    consoleWarnSpy.mockRestore()
+  })
+
+  test('should return undefined and warn when timeout is zero', () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = createTranslatorOptions('0')
+
+    expect(result).toBeUndefined()
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      'Invalid timeout value: 0. Expected a positive number in milliseconds. Ignoring timeout parameter.'
+    )
+
+    consoleWarnSpy.mockRestore()
+  })
+
+  test('should return undefined and warn when timeout is negative', () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = createTranslatorOptions('-5000')
+
+    expect(result).toBeUndefined()
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      'Invalid timeout value: -5000. Expected a positive number in milliseconds. Ignoring timeout parameter.'
+    )
+
+    consoleWarnSpy.mockRestore()
+  })
+
+  test('should return minTimeout when timeout is a valid positive number', () => {
+    const result = createTranslatorOptions('5000')
+
+    expect(result).toEqual({ minTimeout: 5000 })
+  })
+
+  test('should return minTimeout when timeout is a large valid number', () => {
+    const result = createTranslatorOptions('30000')
+
+    expect(result).toEqual({ minTimeout: 30000 })
+  })
+
+  test('should handle timeout with decimal values by parsing as integer', () => {
+    const result = createTranslatorOptions('5000.99')
+
+    expect(result).toEqual({ minTimeout: 5000 })
+  })
 })
 
 describe('buildOutputJson', () => {
