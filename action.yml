@@ -15,6 +15,9 @@ inputs:
   output_file_name_pattern:
     description: "Pattern of the output file name, including the folder name"
     required: true
+  base_ref:
+    description: "Optional git branch to diff the source file against before translating. Defaults to the pull request base branch when available."
+    required: false
   deepl_api_key:
     description: "API Key for DeepL API"
     required: true
@@ -54,6 +57,7 @@ runs:
       input_file_path: ${{ inputs.input_file_path }}
       output_file_name_prefix: ${{ inputs.output_file_name_prefix }}
       output_file_name_pattern: ${{ inputs.output_file_name_pattern }}
+      base_ref: ${{ inputs.base_ref }}
       deepl_api_key: ${{ inputs.deepl_api_key }}
       ignore_terms: ${{ inputs.ignore_terms }}
       no_translate_start_tag: ${{ inputs.no_translate_start_tag }}

@@ -6,7 +6,6 @@ const execFileAsync = promisify(execFile)
 interface BaseFileContentParams {
   workspacePath: string
   inputFileRelativePath: string
-  eventName?: string
   baseRef?: string
 }
 
@@ -22,10 +21,9 @@ function isMissingPathError(stderr: string) {
 export async function getBaseFileContent({
   workspacePath,
   inputFileRelativePath,
-  eventName,
   baseRef,
 }: BaseFileContentParams): Promise<string | null> {
-  if (eventName !== 'pull_request' || !baseRef) {
+  if (!baseRef) {
     return null
   }
 

@@ -11,6 +11,7 @@ const translatorOptions = createTranslatorOptions(process.env.timeout);
 const translator = new Translator(authKey, translatorOptions);
 const workspacePath = process.env.GITHUB_WORKSPACE as string;
 const inputFileRelativePath = process.env.input_file_path as string;
+const baseRef = process.env.base_ref || process.env.GITHUB_BASE_REF;
 const inputFilePath = path.join(
 	workspacePath,
 	inputFileRelativePath,
@@ -54,8 +55,7 @@ const fileExtensionsThatAllowForIgnoringBlocks = [".html", ".xml", ".md", ".txt"
 	const baseFileContent = await getBaseFileContent({
 		workspacePath,
 		inputFileRelativePath,
-		eventName: process.env.GITHUB_EVENT_NAME,
-		baseRef: process.env.GITHUB_BASE_REF,
+		baseRef,
 	});
 
 	await main({
