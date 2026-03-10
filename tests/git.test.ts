@@ -57,11 +57,10 @@ describe('getBaseFileContent', () => {
     )
   })
 
-  test('falls back to the branch tip when merge-base lookup fails', async () => {
+  test('falls back to full translation when merge-base lookup fails', async () => {
     execFileAsyncMock
       .mockResolvedValueOnce({ stdout: '', stderr: '' }) // fetch
       .mockRejectedValueOnce(new Error('merge-base failed'))
-      .mockResolvedValueOnce({ stdout: '{"warning":"Warning"}', stderr: '' }) // show
 
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { getBaseFileContent } = await import('../src/git')
@@ -72,13 +71,8 @@ describe('getBaseFileContent', () => {
       baseRef: 'release/leapfrog',
     })
 
-    expect(result).toBe('{"warning":"Warning"}')
-    expect(execFileAsyncMock).toHaveBeenNthCalledWith(
-      3,
-      'git',
-      ['show', 'refs/remotes/base/release/leapfrog:public/locales/translation.en.json'],
-      { cwd: '/repo', maxBuffer: 10 * 1024 * 1024 },
-    )
+    expect(result).toBeNull()
+    expect(execFileAsyncMock).toHaveBeenCalledTimes(2)
     expect(consoleWarnSpy).toHaveBeenCalled()
     consoleWarnSpy.mockRestore()
   })

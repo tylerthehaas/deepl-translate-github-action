@@ -59,7 +59,7 @@ export async function getBaseFileContent({
     console.warn(`Failed to fetch base branch ${baseBranchRef}, falling back to local refs if available.`, error)
   }
 
-  let baseCommitRef = baseBranchRef
+  let baseCommitRef: string | null = null
 
   try {
     const { stdout } = await execFileAsync(
@@ -74,9 +74,13 @@ export async function getBaseFileContent({
     }
   } catch (error) {
     console.warn(
-      `Failed to determine merge-base with ${baseBranchRef}, falling back to the branch tip for diffing.`,
+      `Failed to determine merge-base with ${baseBranchRef}, falling back to full translation.`,
       error,
     )
+  }
+
+  if (!baseCommitRef) {
+    return null
   }
 
   try {
