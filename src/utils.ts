@@ -1,6 +1,8 @@
 import type { TargetLanguageCode, Translator, TextResult } from "deepl-node";
 import type { ModelType } from "./main";
 
+const maxTextsPerBatch = 50
+
 export interface TranslatedTextResult {
   lang: TargetLanguageCode
   text: string[]
@@ -181,7 +183,7 @@ async function translateTexts(
     return []
   }
 
-  const preprocess = options.preprocess ?? ((value: string) => value)
+  const preprocess = options.preprocess ?? replaceParameterStringsInJSONValueWithKeepTags
   const postprocess = options.postprocess ?? ((value: string) => value)
   const textsToBeTranslated = sourceStrings.map(preprocess)
   const maxRequestSizeBytes = 128 * 1024
@@ -218,7 +220,10 @@ async function translateTexts(
       )
     }
 
-    if (currentBatch.length > 0 && currentBatchSize + textSizeBytes > maxTextSizeBytes) {
+    if (
+      currentBatch.length > 0
+      && (currentBatchSize + textSizeBytes > maxTextSizeBytes || currentBatch.length >= maxTextsPerBatch)
+    ) {
       await flushBatch()
     }
 
@@ -281,7 +286,10 @@ function translateStrings(
       )
     }
 
-    if (currentBatch.length > 0 && currentBatchSize + textSizeBytes > maxTextSizeBytes) {
+    if (
+      currentBatch.length > 0
+      && (currentBatchSize + textSizeBytes > maxTextSizeBytes || currentBatch.length >= maxTextsPerBatch)
+    ) {
       flushBatch()
     }
 

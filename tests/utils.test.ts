@@ -3,6 +3,7 @@ import {
   removeKeepTagsFromString,
   replaceAll,
   replaceParameterStringsInJSONValueWithKeepTags,
+  translateTexts,
   collectAllStringsFromJson,
   buildOutputFileName,
   buildOutputJson,
@@ -152,6 +153,51 @@ describe('replaceParameterStringsInJSONValueWithKeepTags', () => {
     const expectedOutput = '<keep>{Hello}</keep> <keep>{World}</keep> and <keep>{{Universe}}</keep>'
 
     expect(replaceParameterStringsInJSONValueWithKeepTags(input)).toEqual(expectedOutput)
+  })
+})
+
+describe('translateTexts', () => {
+  test('should protect placeholders by default and allow keep-tag postprocessing', async () => {
+    const mockTranslator = {
+      translateText: vi.fn().mockResolvedValue([{ text: 'Hola <keep>{{name}}</keep>' }]),
+    } as any
+
+    const result = await translateTexts(['Hello {{name}}'], 'es', mockTranslator, {
+      postprocess: removeKeepTagsFromString,
+    })
+
+    expect(mockTranslator.translateText).toHaveBeenCalledWith(
+      ['Hello <keep>{{name}}</keep>'],
+      null,
+      'es',
+      expect.objectContaining({
+        tagHandling: 'xml',
+        ignoreTags: ['keep'],
+        preserveFormatting: true,
+      }),
+    )
+    expect(result).toEqual(['Hola {{name}}'])
+  })
+
+  test('should allow callers to override the default preprocess', async () => {
+    const mockTranslator = {
+      translateText: vi.fn().mockResolvedValue([{ text: 'custom value' }]),
+    } as any
+
+    await translateTexts(['Hello {{name}}'], 'es', mockTranslator, {
+      preprocess: (value) => `custom:${value}`,
+    })
+
+    expect(mockTranslator.translateText).toHaveBeenCalledWith(
+      ['custom:Hello {{name}}'],
+      null,
+      'es',
+      expect.objectContaining({
+        tagHandling: 'xml',
+        ignoreTags: ['keep'],
+        preserveFormatting: true,
+      }),
+    )
   })
 })
 
