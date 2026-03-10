@@ -18,6 +18,17 @@ function isMissingPathError(stderr: string) {
   )
 }
 
+function getWorkflowRepositoryUrl(): string | null {
+  const serverUrl = process.env.GITHUB_SERVER_URL?.replace(/\/$/, '')
+  const repository = process.env.GITHUB_REPOSITORY
+
+  if (!serverUrl || !repository) {
+    return null
+  }
+
+  return `${serverUrl}/${repository}.git`
+}
+
 export async function getBaseFileContent({
   workspacePath,
   inputFileRelativePath,
@@ -27,28 +38,33 @@ export async function getBaseFileContent({
     return null
   }
 
+  const baseRepoUrl = getWorkflowRepositoryUrl()
+  const baseBranchRef = baseRepoUrl
+    ? `refs/remotes/base/${baseRef}`
+    : `refs/remotes/origin/${baseRef}`
+  const fetchSource = baseRepoUrl ?? 'origin'
+
   try {
     await execFileAsync(
       'git',
       [
         'fetch',
         '--no-tags',
-        '--depth=1',
-        'origin',
-        `+refs/heads/${baseRef}:refs/remotes/origin/${baseRef}`,
+        fetchSource,
+        `+refs/heads/${baseRef}:${baseBranchRef}`,
       ],
       { cwd: workspacePath, maxBuffer: 10 * 1024 * 1024 },
     )
   } catch (error) {
-    console.warn(`Failed to fetch base branch origin/${baseRef}, falling back to local refs if available.`, error)
+    console.warn(`Failed to fetch base branch ${baseBranchRef}, falling back to local refs if available.`, error)
   }
 
-  let baseCommitRef = `origin/${baseRef}`
+  let baseCommitRef = baseBranchRef
 
   try {
     const { stdout } = await execFileAsync(
       'git',
-      ['merge-base', 'HEAD', `origin/${baseRef}`],
+      ['merge-base', 'HEAD', baseBranchRef],
       { cwd: workspacePath, maxBuffer: 10 * 1024 * 1024 },
     )
 
@@ -58,7 +74,7 @@ export async function getBaseFileContent({
     }
   } catch (error) {
     console.warn(
-      `Failed to determine merge-base with origin/${baseRef}, falling back to the branch tip for diffing.`,
+      `Failed to determine merge-base with ${baseBranchRef}, falling back to the branch tip for diffing.`,
       error,
     )
   }
