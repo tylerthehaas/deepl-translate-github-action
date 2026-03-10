@@ -80,9 +80,10 @@ export async function getBaseFileContent({
   }
 
   try {
+    const normalizedInputFileRelativePath = inputFileRelativePath.replace(/\\/g, '/')
     const { stdout } = await execFileAsync(
       'git',
-      ['show', `${baseCommitRef}:${inputFileRelativePath}`],
+      ['show', `${baseCommitRef}:${normalizedInputFileRelativePath}`],
       { cwd: workspacePath, maxBuffer: 10 * 1024 * 1024 },
     )
 

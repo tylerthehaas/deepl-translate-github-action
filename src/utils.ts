@@ -212,6 +212,12 @@ async function translateTexts(
   for (const text of textsToBeTranslated) {
     const textSizeBytes = new TextEncoder().encode(text).length
 
+    if (textSizeBytes > maxTextSizeBytes) {
+      throw new Error(
+        `Text length ${text.length} exceeds maxTextSizeBytes ${maxTextSizeBytes} (encoded size: ${textSizeBytes} bytes)`,
+      )
+    }
+
     if (currentBatch.length > 0 && currentBatchSize + textSizeBytes > maxTextSizeBytes) {
       await flushBatch()
     }
@@ -256,22 +262,34 @@ function translateStrings(
       text: result.map((item) => item.text),
     }))
 
+  const flushBatch = () => {
+    if (currentBatch.length === 0) {
+      return
+    }
+
+    promises.push(createBatchPromise(currentBatch))
+    currentBatch = []
+    currentBatchSize = 0
+  }
+
   for (const text of textsToBeTranslated) {
     const textSizeBytes = new TextEncoder().encode(text).length
 
+    if (textSizeBytes > maxTextSizeBytes) {
+      throw new Error(
+        `Text length ${text.length} exceeds maxTextSizeBytes ${maxTextSizeBytes} (encoded size: ${textSizeBytes} bytes)`,
+      )
+    }
+
     if (currentBatch.length > 0 && currentBatchSize + textSizeBytes > maxTextSizeBytes) {
-      promises.push(createBatchPromise(currentBatch))
-      currentBatch = []
-      currentBatchSize = 0
+      flushBatch()
     }
 
     currentBatch.push(text)
     currentBatchSize += textSizeBytes
   }
 
-  if (currentBatch.length > 0) {
-    promises.push(createBatchPromise(currentBatch))
-  }
+  flushBatch()
 
   return promises
 }
@@ -438,8 +456,28 @@ function getTextLineMetadata(
   return lines.map((line) => {
     const hasStartTag = Boolean(startTag && line.includes(startTag))
     const hasEndTag = Boolean(endTag && line.includes(endTag))
+    const opensMultiLineBlock = hasStartTag && !hasEndTag
+    const closesMultiLineBlock = hasEndTag && insideNoTranslateBlock
 
     if (insideNoTranslateBlock && !hasEndTag) {
+      return {
+        preparedLine: line,
+        shouldTranslate: false,
+        outputLine: line,
+      }
+    }
+
+    if (opensMultiLineBlock) {
+      insideNoTranslateBlock = true
+      return {
+        preparedLine: line,
+        shouldTranslate: false,
+        outputLine: line,
+      }
+    }
+
+    if (closesMultiLineBlock) {
+      insideNoTranslateBlock = false
       return {
         preparedLine: line,
         shouldTranslate: false,
@@ -455,9 +493,7 @@ function getTextLineMetadata(
       preparedLine = replaceAll(preparedLine, endTag, '</keep>')
     }
 
-    if (hasStartTag && !hasEndTag) {
-      insideNoTranslateBlock = true
-    } else if (hasEndTag) {
+    if (hasEndTag) {
       insideNoTranslateBlock = false
     }
 

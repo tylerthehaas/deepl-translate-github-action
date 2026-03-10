@@ -9,6 +9,7 @@ import {
   translateStrings,
   groupItemsByLang,
   createTranslatorOptions,
+  getTextLineMetadata,
   type TranslatedTextResult,
 } from '../src/utils'
 import * as fs from 'fs'
@@ -47,6 +48,62 @@ describe('removeKeepTagsFromString', () => {
     const expected = 'hello world'
     const result = removeKeepTagsFromString(str)
     expect(result).toEqual(expected)
+  })
+})
+
+describe('getTextLineMetadata', () => {
+  test('should not translate multi-line keep block boundary lines', () => {
+    const result = getTextLineMetadata(
+      [
+        'Translate me',
+        '<!-- notranslate:start -->',
+        'Protected text',
+        '<!-- notranslate:end -->',
+        'Translate me too',
+      ],
+      '<!-- notranslate:start -->',
+      '<!-- notranslate:end -->',
+    )
+
+    expect(result).toEqual([
+      {
+        preparedLine: 'Translate me',
+        shouldTranslate: true,
+        outputLine: 'Translate me',
+      },
+      {
+        preparedLine: '<!-- notranslate:start -->',
+        shouldTranslate: false,
+        outputLine: '<!-- notranslate:start -->',
+      },
+      {
+        preparedLine: 'Protected text',
+        shouldTranslate: false,
+        outputLine: 'Protected text',
+      },
+      {
+        preparedLine: '<!-- notranslate:end -->',
+        shouldTranslate: false,
+        outputLine: '<!-- notranslate:end -->',
+      },
+      {
+        preparedLine: 'Translate me too',
+        shouldTranslate: true,
+        outputLine: 'Translate me too',
+      },
+    ])
+  })
+
+  test('should still translate lines with inline keep tags', () => {
+    const result = getTextLineMetadata(['Hello {{name}}'], '{{', '}}')
+
+    expect(result).toEqual([
+      {
+        preparedLine: 'Hello <keep>name</keep>',
+        shouldTranslate: true,
+        outputLine: 'Hello {{name}}',
+      },
+    ])
   })
 })
 

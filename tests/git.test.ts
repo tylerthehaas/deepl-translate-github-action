@@ -118,4 +118,26 @@ describe('getBaseFileContent', () => {
       { cwd: '/repo', maxBuffer: 10 * 1024 * 1024 },
     )
   })
+
+  test('normalizes Windows path separators before reading the blob', async () => {
+    execFileAsyncMock
+      .mockResolvedValueOnce({ stdout: '', stderr: '' }) // fetch
+      .mockResolvedValueOnce({ stdout: 'abc123\n', stderr: '' }) // merge-base
+      .mockResolvedValueOnce({ stdout: '{"warning":"Warning"}', stderr: '' }) // show
+
+    const { getBaseFileContent } = await import('../src/git')
+
+    await getBaseFileContent({
+      workspacePath: '/repo',
+      inputFileRelativePath: 'public\\locales\\translation.en.json',
+      baseRef: 'release/leapfrog',
+    })
+
+    expect(execFileAsyncMock).toHaveBeenNthCalledWith(
+      3,
+      'git',
+      ['show', 'abc123:public/locales/translation.en.json'],
+      { cwd: '/repo', maxBuffer: 10 * 1024 * 1024 },
+    )
+  })
 })
