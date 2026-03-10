@@ -43,10 +43,30 @@ export async function getBaseFileContent({
     console.warn(`Failed to fetch base branch origin/${baseRef}, falling back to local refs if available.`, error)
   }
 
+  let baseCommitRef = `origin/${baseRef}`
+
   try {
     const { stdout } = await execFileAsync(
       'git',
-      ['show', `origin/${baseRef}:${inputFileRelativePath}`],
+      ['merge-base', 'HEAD', `origin/${baseRef}`],
+      { cwd: workspacePath, maxBuffer: 10 * 1024 * 1024 },
+    )
+
+    const mergeBaseSha = stdout.trim()
+    if (mergeBaseSha) {
+      baseCommitRef = mergeBaseSha
+    }
+  } catch (error) {
+    console.warn(
+      `Failed to determine merge-base with origin/${baseRef}, falling back to the branch tip for diffing.`,
+      error,
+    )
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['show', `${baseCommitRef}:${inputFileRelativePath}`],
       { cwd: workspacePath, maxBuffer: 10 * 1024 * 1024 },
     )
 
@@ -59,7 +79,7 @@ export async function getBaseFileContent({
     }
 
     console.warn(
-      `Failed to read ${inputFileRelativePath} from origin/${baseRef}, falling back to full translation.`,
+      `Failed to read ${inputFileRelativePath} from ${baseCommitRef}, falling back to full translation.`,
       error,
     )
     return null
