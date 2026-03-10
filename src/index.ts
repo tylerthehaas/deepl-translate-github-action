@@ -1,6 +1,7 @@
 import type { TargetLanguageCode } from "deepl-node";
 import { Translator } from 'deepl-node';
 import path from "path";
+import { getBaseFileContent } from "./git";
 import { main, type ModelType } from "./main";
 import { createTranslatorOptions } from "./utils";
 
@@ -8,19 +9,21 @@ const authKey = process.env.deepl_api_key as string;
 const translatorOptions = createTranslatorOptions(process.env.timeout);
 
 const translator = new Translator(authKey, translatorOptions);
+const workspacePath = process.env.GITHUB_WORKSPACE as string;
+const inputFileRelativePath = process.env.input_file_path as string;
 const inputFilePath = path.join(
-	process.env.GITHUB_WORKSPACE as string,
-	process.env.input_file_path as string,
+	workspacePath,
+	inputFileRelativePath,
 );
 const outputFileNamePattern = path.join(
-	process.env.GITHUB_WORKSPACE as string,
+	workspacePath,
 	process.env.output_file_name_pattern as string,
 )
 const startTagForNoTranslate = process.env.no_translate_start_tag as string;
 const endTagForNoTranslate = process.env.no_translate_end_tag as string;
 
 const tempFilePath = path.join(
-	process.env.GITHUB_WORKSPACE as string,
+	workspacePath,
 	"to_translate.txt",
 );
 const fileExtensionsThatAllowForIgnoringBlocks = [".html", ".xml", ".md", ".txt"];
@@ -48,8 +51,17 @@ const fileExtensionsThatAllowForIgnoringBlocks = [".html", ".xml", ".md", ".txt"
 		}
 	}
 
+	const baseFileContent = await getBaseFileContent({
+		workspacePath,
+		inputFileRelativePath,
+		eventName: process.env.GITHUB_EVENT_NAME,
+		baseRef: process.env.GITHUB_BASE_REF,
+	});
+
 	await main({
 		translator,
+		workspacePath,
+		inputFileRelativePath,
 		inputFilePath,
 		outputFileNamePattern,
 		startTagForNoTranslate,
@@ -58,5 +70,6 @@ const fileExtensionsThatAllowForIgnoringBlocks = [".html", ".xml", ".md", ".txt"
 		fileExtensionsThatAllowForIgnoringBlocks,
 		targetLanguages,
 		modelType,
+		baseFileContent,
 	});
 })();
