@@ -3,12 +3,14 @@ import {
   removeKeepTagsFromString,
   replaceAll,
   replaceParameterStringsInJSONValueWithKeepTags,
+  translateTexts,
   collectAllStringsFromJson,
   buildOutputFileName,
   buildOutputJson,
   translateStrings,
   groupItemsByLang,
   createTranslatorOptions,
+  getTextLineMetadata,
   type TranslatedTextResult,
 } from '../src/utils'
 import * as fs from 'fs'
@@ -47,6 +49,102 @@ describe('removeKeepTagsFromString', () => {
     const expected = 'hello world'
     const result = removeKeepTagsFromString(str)
     expect(result).toEqual(expected)
+  })
+})
+
+describe('getTextLineMetadata', () => {
+  test('should handle empty lines array', () => {
+    const result = getTextLineMetadata([], '<start>', '<end>')
+
+    expect(result).toEqual([])
+  })
+
+  test('should handle missing start/end tags without throwing', () => {
+    expect(getTextLineMetadata(['Hello {{name}}'], undefined, undefined)).toEqual([
+      {
+        preparedLine: 'Hello {{name}}',
+        shouldTranslate: true,
+        outputLine: 'Hello {{name}}',
+      },
+    ])
+
+    expect(getTextLineMetadata(['Hello {{name}}'], undefined, '}}')).toEqual([
+      {
+        preparedLine: 'Hello {{name}}',
+        shouldTranslate: true,
+        outputLine: 'Hello {{name}}',
+      },
+    ])
+  })
+
+  test('should not translate multi-line keep block boundary lines', () => {
+    const result = getTextLineMetadata(
+      [
+        'Translate me',
+        '<!-- notranslate:start -->',
+        'Protected text',
+        '<!-- notranslate:end -->',
+        'Translate me too',
+      ],
+      '<!-- notranslate:start -->',
+      '<!-- notranslate:end -->',
+    )
+
+    expect(result).toEqual([
+      {
+        preparedLine: 'Translate me',
+        shouldTranslate: true,
+        outputLine: 'Translate me',
+      },
+      {
+        preparedLine: '<!-- notranslate:start -->',
+        shouldTranslate: false,
+        outputLine: '<!-- notranslate:start -->',
+      },
+      {
+        preparedLine: 'Protected text',
+        shouldTranslate: false,
+        outputLine: 'Protected text',
+      },
+      {
+        preparedLine: '<!-- notranslate:end -->',
+        shouldTranslate: false,
+        outputLine: '<!-- notranslate:end -->',
+      },
+      {
+        preparedLine: 'Translate me too',
+        shouldTranslate: true,
+        outputLine: 'Translate me too',
+      },
+    ])
+  })
+
+  test('should still translate lines with inline keep tags', () => {
+    const result = getTextLineMetadata(['Hello {{name}}'], '{{', '}}')
+
+    expect(result).toEqual([
+      {
+        preparedLine: 'Hello <keep>name</keep>',
+        shouldTranslate: true,
+        outputLine: 'Hello {{name}}',
+      },
+    ])
+  })
+
+  test('should preserve inline no-translate blocks while translating surrounding text', () => {
+    const result = getTextLineMetadata(
+      ['prefix <!-- notranslate:start -->protected<!-- notranslate:end --> suffix'],
+      '<!-- notranslate:start -->',
+      '<!-- notranslate:end -->',
+    )
+
+    expect(result).toEqual([
+      {
+        preparedLine: 'prefix <keep>protected</keep> suffix',
+        shouldTranslate: true,
+        outputLine: 'prefix <!-- notranslate:start -->protected<!-- notranslate:end --> suffix',
+      },
+    ])
   })
 })
 
@@ -95,6 +193,51 @@ describe('replaceParameterStringsInJSONValueWithKeepTags', () => {
     const expectedOutput = '<keep>{Hello}</keep> <keep>{World}</keep> and <keep>{{Universe}}</keep>'
 
     expect(replaceParameterStringsInJSONValueWithKeepTags(input)).toEqual(expectedOutput)
+  })
+})
+
+describe('translateTexts', () => {
+  test('should protect placeholders by default and allow keep-tag postprocessing', async () => {
+    const mockTranslator = {
+      translateText: vi.fn().mockResolvedValue([{ text: 'Hola <keep>{{name}}</keep>' }]),
+    } as any
+
+    const result = await translateTexts(['Hello {{name}}'], 'es', mockTranslator, {
+      postprocess: removeKeepTagsFromString,
+    })
+
+    expect(mockTranslator.translateText).toHaveBeenCalledWith(
+      ['Hello <keep>{{name}}</keep>'],
+      null,
+      'es',
+      expect.objectContaining({
+        tagHandling: 'xml',
+        ignoreTags: ['keep'],
+        preserveFormatting: true,
+      }),
+    )
+    expect(result).toEqual(['Hola {{name}}'])
+  })
+
+  test('should allow callers to override the default preprocess', async () => {
+    const mockTranslator = {
+      translateText: vi.fn().mockResolvedValue([{ text: 'custom value' }]),
+    } as any
+
+    await translateTexts(['Hello {{name}}'], 'es', mockTranslator, {
+      preprocess: (value) => `custom:${value}`,
+    })
+
+    expect(mockTranslator.translateText).toHaveBeenCalledWith(
+      ['custom:Hello {{name}}'],
+      null,
+      'es',
+      expect.objectContaining({
+        tagHandling: 'xml',
+        ignoreTags: ['keep'],
+        preserveFormatting: true,
+      }),
+    )
   })
 })
 

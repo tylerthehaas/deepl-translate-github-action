@@ -178,7 +178,7 @@ describe('main - ES-419 translation from English', () => {
     
     // Verify translateText was called with correct parameters
     const [textToTranslate, sourceLanguage, targetLanguage, options] = mockTranslatorSpy.mock.calls[0]
-    expect(textToTranslate).toBe(fakeReadFileResult)
+    expect(textToTranslate).toEqual([fakeReadFileResult])
     expect(sourceLanguage).toBe(null)
     expect(targetLanguage).toBe('es-419')
     expect(options).toEqual({
@@ -206,7 +206,7 @@ describe('main - ES-419 translation from English', () => {
     
     // Verify translateText was called with correct parameters including modelType
     const [textToTranslate, sourceLanguage, targetLanguage, options] = mockTranslatorSpy.mock.calls[0]
-    expect(textToTranslate).toBe(fakeReadFileResult)
+    expect(textToTranslate).toEqual([fakeReadFileResult])
     expect(sourceLanguage).toBe(null)
     expect(targetLanguage).toBe('es-419')
     expect(options).toEqual({
@@ -215,5 +215,139 @@ describe('main - ES-419 translation from English', () => {
       ignoreTags: ['keep'],
       modelType: 'prefer_quality_optimized',
     })
+  })
+})
+
+describe('main - incremental JSON translation', () => {
+  const mockTranslator = {
+    translateText: vi.fn().mockImplementation(async (texts: string[]) =>
+      texts.map((text) => ({ text: `translated:${text}` })),
+    ),
+  } as any
+
+  beforeEach(() => {
+    vi.mocked(fs.existsSync).mockReturnValue(true)
+    vi.mocked(fs.writeFileSync).mockReturnValue()
+    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined)
+    vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined as any)
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('should only translate changed JSON keys and preserve unchanged target values', async () => {
+    const currentJson = {
+      title: 'Updated title',
+      description: 'Same description',
+      nested: {
+        added: 'Brand new',
+      },
+    }
+    const baseJson = {
+      title: 'Original title',
+      description: 'Same description',
+      removed: 'Delete me',
+    }
+    const targetJson = {
+      title: 'Titulo original',
+      description: 'Descripcion igual',
+      removed: 'Borrame',
+    }
+
+    vi.mocked(fs.promises.readFile).mockImplementation(async (filePath: any) => {
+      if (filePath === 'test/input.json') return JSON.stringify(currentJson)
+      if (filePath === 'test/es.json') return JSON.stringify(targetJson)
+      return ''
+    })
+
+    await main({
+      translator: mockTranslator,
+      inputFilePath: 'test/input.json',
+      outputFileNamePattern: 'test/{language}.json',
+      tempFilePath: 'to_translate.txt',
+      fileExtensionsThatAllowForIgnoringBlocks: ['.html', '.xml', '.md', '.txt'],
+      targetLanguages: ['es'],
+      baseFileContent: JSON.stringify(baseJson),
+    })
+
+    expect(mockTranslator.translateText).toHaveBeenCalledTimes(1)
+    expect(mockTranslator.translateText).toHaveBeenCalledWith(
+      ['Updated title', 'Brand new'],
+      null,
+      'es',
+      {
+        preserveFormatting: true,
+        tagHandling: 'xml',
+        ignoreTags: ['keep'],
+      },
+    )
+    expect(vi.mocked(fs.promises.writeFile)).toHaveBeenCalledWith(
+      'test/es.json',
+      JSON.stringify(
+        {
+          title: 'translated:Updated title',
+          description: 'Descripcion igual',
+          nested: {
+            added: 'translated:Brand new',
+          },
+        },
+        null,
+        2,
+      ),
+    )
+  })
+})
+
+describe('main - incremental text translation', () => {
+  const mockTranslator = {
+    translateText: vi.fn().mockImplementation(async (texts: string[]) =>
+      texts.map((text) => ({ text: `translated:${text}` })),
+    ),
+  } as any
+
+  beforeEach(() => {
+    vi.mocked(fs.existsSync).mockReturnValue(true)
+    vi.mocked(fs.writeFileSync).mockReturnValue()
+    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined)
+    vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined as any)
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('should patch only changed text lines into the existing translated file', async () => {
+    vi.mocked(fs.promises.readFile).mockImplementation(async (filePath: any) => {
+      if (filePath === 'test/input.md') return 'Hello there\nSame line\n'
+      if (filePath === 'test/es.md') return 'Hola\nMisma linea\nRemove me\n'
+      return ''
+    })
+
+    await main({
+      translator: mockTranslator,
+      inputFilePath: 'test/input.md',
+      outputFileNamePattern: 'test/{language}.md',
+      tempFilePath: 'to_translate.txt',
+      fileExtensionsThatAllowForIgnoringBlocks: ['.html', '.xml', '.md', '.txt'],
+      targetLanguages: ['es'],
+      baseFileContent: 'Hello\nSame line\nRemove me\n',
+    })
+
+    expect(mockTranslator.translateText).toHaveBeenCalledTimes(1)
+    expect(mockTranslator.translateText).toHaveBeenCalledWith(
+      ['Hello there'],
+      null,
+      'es',
+      {
+        preserveFormatting: true,
+        tagHandling: 'xml',
+        ignoreTags: ['keep'],
+      },
+    )
+    expect(vi.mocked(fs.promises.writeFile)).toHaveBeenCalledWith(
+      'test/es.md',
+      'translated:Hello there\nMisma linea\n',
+    )
   })
 })
