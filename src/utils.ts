@@ -460,10 +460,11 @@ function getTextLineMetadata(
   endTag?: string,
 ): TextLineMetadata[] {
   let insideNoTranslateBlock = false
+  const hasNoTranslateTags = Boolean(startTag && endTag)
 
   return lines.map((line) => {
-    const hasStartTag = Boolean(startTag && line.includes(startTag))
-    const hasEndTag = Boolean(endTag && line.includes(endTag))
+    const hasStartTag = Boolean(hasNoTranslateTags && startTag && line.includes(startTag))
+    const hasEndTag = Boolean(hasNoTranslateTags && endTag && line.includes(endTag))
     const opensMultiLineBlock = hasStartTag && !hasEndTag
     const closesMultiLineBlock = hasEndTag && insideNoTranslateBlock
 

@@ -53,6 +53,30 @@ describe('removeKeepTagsFromString', () => {
 })
 
 describe('getTextLineMetadata', () => {
+  test('should handle empty lines array', () => {
+    const result = getTextLineMetadata([], '<start>', '<end>')
+
+    expect(result).toEqual([])
+  })
+
+  test('should handle missing start/end tags without throwing', () => {
+    expect(getTextLineMetadata(['Hello {{name}}'], undefined, undefined)).toEqual([
+      {
+        preparedLine: 'Hello {{name}}',
+        shouldTranslate: true,
+        outputLine: 'Hello {{name}}',
+      },
+    ])
+
+    expect(getTextLineMetadata(['Hello {{name}}'], undefined, '}}')).toEqual([
+      {
+        preparedLine: 'Hello {{name}}',
+        shouldTranslate: true,
+        outputLine: 'Hello {{name}}',
+      },
+    ])
+  })
+
   test('should not translate multi-line keep block boundary lines', () => {
     const result = getTextLineMetadata(
       [
@@ -103,6 +127,22 @@ describe('getTextLineMetadata', () => {
         preparedLine: 'Hello <keep>name</keep>',
         shouldTranslate: true,
         outputLine: 'Hello {{name}}',
+      },
+    ])
+  })
+
+  test('should preserve inline no-translate blocks while translating surrounding text', () => {
+    const result = getTextLineMetadata(
+      ['prefix <!-- notranslate:start -->protected<!-- notranslate:end --> suffix'],
+      '<!-- notranslate:start -->',
+      '<!-- notranslate:end -->',
+    )
+
+    expect(result).toEqual([
+      {
+        preparedLine: 'prefix <keep>protected</keep> suffix',
+        shouldTranslate: true,
+        outputLine: 'prefix <!-- notranslate:start -->protected<!-- notranslate:end --> suffix',
       },
     ])
   })
